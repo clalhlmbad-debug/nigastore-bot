@@ -1,7 +1,7 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = "8826744317:AAEhuJxpjx8m9il7rwvEJmca75qrJOvJ55M"
+TOKEN = "8826744317:AAEhuJxpjx8m9il7rwvEJmca75qrJOvJ55M" 
 bot = telebot.TeleBot(TOKEN)
 
 # عنوان الشام كاش الخاص بك (تم تحديثه)
