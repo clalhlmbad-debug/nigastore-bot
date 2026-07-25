@@ -1,7 +1,8 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = "8826744317:AAEhuJxpjx8m9i17rwvEJmca75qrJOvJ55M"
+# التوكن الجديد الصحيح الخاص بك (Niga Store)
+TOKEN = "8826744317:AAEhuJxpjx8m9il7rwvEJmca75qrJOvJ55M"
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start', 'help'])
