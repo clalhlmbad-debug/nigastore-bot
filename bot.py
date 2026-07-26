@@ -26,6 +26,7 @@ EXCHANGE_RATE = 145
 
 bot = telebot.TeleBot(TOKEN)
 user_orders = {}
+admin_actions = {}  # لتتبع حالة انتظار كود البطاقة من الأدمن
 ORDERS_FILE = "all_orders.txt"
 
 PRICES = {
@@ -179,7 +180,7 @@ def callback_query(call):
             amount = call.data.split("_")[-1]
         
         price_in_syr = round(PRICES[call.data] * EXCHANGE_RATE)
-        user_orders[call.from_user.id] = {"game": game_type, "amount": f"{amount} {unit}", "price": price_in_syr}
+        user_orders[call.from_user.id] = {"game": game_type, "amount": f"{amount} {unit}", "price": price_in_syr, "item_key": call.data}
         
         bot.send_message(chat_id, f"🛒 لقد اخترت شحن {amount} {unit} من قسم {game_type}.\n\n💵 التكلفة: {price_in_syr} ل.س.\n\n🆔 الرجاء إرسال الـ ID الخاص بك أو الحساب المراد الشحن له الآن لإتمام العملية:")
         bot.answer_callback_query(call.id)
@@ -188,19 +189,12 @@ def callback_query(call):
         if chat_id == ADMIN_ID:
             data_parts = call.data.split("_")
             action = data_parts[0]
-            target_user_id = data_parts[1]
+            target_user_id = int(data_parts[1])
+            item_type = data_parts[2] if len(data_parts) > 2 else "game"
             
             if action == "accept":
-                try:
-                    bot.send_message(target_user_id, "✅ تم شحن طلبك بنجاح ومبروك الشحن!")
-                except:
-                    pass
-                bot.edit_message_text("✅ تم قبول الطلب بنجاح.", chat_id, call.message.message_id)
-            elif action == "reject":
-                try:
-                    bot.send_message(target_user_id, "❌ عذراً، تم رفض طلب الشحن الخاص بك.")
-                except:
-                    pass
-                bot.edit_message_text("🛑 تم رفض وإلغاء الطلب.", chat_id, call.message.message_id)
-            bot.answer_callback_query(call.id)
-
+                if item_type in ["itunes", "google"]:
+                    admin_actions[ADMIN_ID] = {"action": "waiting_for_code", "target_user": target_user_id, "message_id": call.message.message_id}
+                    bot.send_message(ADMIN_ID, f"📝 هذا الطلب تابع لقسم البطاقات الرقمية ({item_type}).\nالرجاء كتابة كود البطاقة الآن لإرساله تلقائياً للعميل:")
+                else:
+                    try:
