@@ -3,7 +3,7 @@ from telebot import types
 import os
 
 # --- الإعدادات الأساسية ---
-TOKEN = "8826744317:AAEHuJxpjx8m9i17rwvEJmca75qrJOvJ55M"
+TOKEN = "8826744317:AAHW1mreEvhIna70p0D0QOQ7-tKGH54yPXk"
 ADMIN_ID = 8192730669
 SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b9b06b5384"
 
