@@ -79,12 +79,9 @@ def callback_query(call):
             markup.add(types.InlineKeyboardButton("📋 جميع الطلبات (خاص بالأدمن)", callback_data="admin_view_orders"))
         bot.edit_message_text("🤖 الرجاء اختيار القسم الذي تريد تصفحه من الأزرار أدناه:", chat_id, call.message.message_id, reply_markup=markup)
 
-    # --- تم إصلاح هذا الجزء الحرج لتجنب الإغلاق الفجائي ---
     elif call.data.startswith("buy_pubg_") or call.data.startswith("buy_ff_"):
         game_type = "ببجي موبايل" if "pubg" in call.data else "فري فاير"
         unit = "UC" if "pubg" in call.data else "جوهرة"
-        
-        # استخراج الكمية بطريقة برمجية آمنة
         amount = call.data.split("_")[-1]
         
         user_orders[call.from_user.id] = {
@@ -112,7 +109,7 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص لمالك البوت فقط!")
 
-    # --- الأكواد الجديدة للتحكم بالطلب (موافقة / رفض) ---
+    # --- الأكواد للتحكم بالطلب (موافقة / رفض) ---
     elif call.data.startswith("accept_") or call.data.startswith("reject_"):
         if chat_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص للآدمن فقط!")
@@ -172,10 +169,11 @@ def process_order_steps(message):
                              f"🆔 آيدي اللاعب (ID): `{order_info['player_id']}`\n" \
                              f"🧾 الرقم المرجعي للمعاملة: `{order_info['transaction_id']}`"
                              
-        # إنشاء أزرار التحكم الفورية للآدمن
         admin_markup = types.InlineKeyboardMarkup(row_width=2)
         btn_accept = types.InlineKeyboardButton("🟢 شحن (صح)", callback_data=f"accept_{user_id}")
         btn_reject = types.InlineKeyboardButton("🔴 رفض الطلب (خطأ)", callback_data=f"reject_{user_id}")
         admin_markup.add(btn_accept, btn_reject)
                              
         try:
+            bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown", reply_markup=admin_markup)
+        except Exception as e:
