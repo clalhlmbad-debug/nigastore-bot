@@ -73,6 +73,7 @@ def send_welcome(message):
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
+    
     if call.data == "games_menu":
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
@@ -150,19 +151,18 @@ def callback_query(call):
             markup.add(types.InlineKeyboardButton("📜 جميع الطلبات", callback_data="admin_view_orders"))
         bot.edit_message_text("👋 أهلاً بك في Niga Store! اختر من القائمة أدناه:", chat_id, call.message.message_id, reply_markup=markup)
         
-    if chat_id == ADMIN_ID:
-        if call.data == "admin_view_orders":
-            if os.path.exists(ORDERS_FILE) and os.path.getsize(ORDERS_FILE) > 0:
-                with open(ORDERS_FILE, "r", encoding="utf-8") as f:
-                    orders_data = f.read()
-                if len(orders_data) > 4000:
-                    with open(ORDERS_FILE, "rb") as f:
-                        bot.send_document(chat_id, f, caption="📜 الملف الكامل لكافة الطلبات")
-                else:
-                    bot.send_message(chat_id, f"📜 الطلبات المسجلة حتى الآن:\n\n{orders_data}")
+    if chat_id == ADMIN_ID and call.data == "admin_view_orders":
+        if os.path.exists(ORDERS_FILE) and os.path.getsize(ORDERS_FILE) > 0:
+            with open(ORDERS_FILE, "r", encoding="utf-8") as f:
+                orders_data = f.read()
+            if len(orders_data) > 4000:
+                with open(ORDERS_FILE, "rb") as f:
+                    bot.send_document(chat_id, f, caption="📜 الملف الكامل لكافة الطلبات")
             else:
-                bot.send_message(chat_id, "❌ لا توجد طلبات مسجلة حتى الآن.")
-            bot.answer_callback_query(call.id)
+                bot.send_message(chat_id, f"📜 الطلبات المسجلة حتى الآن:\n\n{orders_data}")
+        else:
+            bot.send_message(chat_id, "❌ لا توجد طلبات مسجلة حتى الآن.")
+        bot.answer_callback_query(call.id)
 
     if call.data.startswith("buy_"):
         if "pubg" in call.data:
@@ -192,10 +192,15 @@ def callback_query(call):
             
             if action == "accept":
                 try:
-                    bot.send_message(target_user_id, "✅ تم حسابك بالألعاب والبطاقات بنجاح ومبروك الشحن!")
-                    bot.edit_message_text("✅ تم قبول الطلب وشحن الحساب للمشترك بنجاح.", chat_id, call.message.message_id)
-                except Exception:
-                    bot.edit_message_text("✅ تمت العملية بنجاح.", chat_id, call.message.message_id)
+                    bot.send_message(target_user_id, "✅ تم شحن طلبك بنجاح ومبروك الشحن!")
+                except:
+                    pass
+                bot.edit_message_text("✅ تم قبول الطلب بنجاح.", chat_id, call.message.message_id)
             elif action == "reject":
                 try:
-                    bot.send_message(target_user_id, "❌ عذراً، تم رفض طلب الشحن الخاص بك. يرجى التواصل مع الدعم لمزيد من التفاصيل.")
+                    bot.send_message(target_user_id, "❌ عذراً، تم رفض طلب الشحن الخاص بك.")
+                except:
+                    pass
+                bot.edit_message_text("🛑 تم رفض وإلغاء الطلب.", chat_id, call.message.message_id)
+            bot.answer_callback_query(call.id)
+
