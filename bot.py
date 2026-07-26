@@ -188,7 +188,7 @@ def callback_query(call):
         if chat_id == ADMIN_ID:
             data_parts = call.data.split("_")
             action = data_parts[0]
-            target_user_id = str(data_parts[1])
+            target_user_id = data_parts[1]
             
             if action == "accept":
                 bot.send_message(target_user_id, "✅ تم حسابك بالألعاب والبطاقات بنجاح ومبروك الشحن!")
