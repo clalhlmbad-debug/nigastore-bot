@@ -61,7 +61,7 @@ def save_order_to_file(order_details):
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    btn_games = types.InlineKeyboardMarkup(row_width=2) # قسم الالعاب والبطاقات
+    btn_games = types.InlineKeyboardButton("قسم الالعاب والبطاقات", callback_data="games_menu")
     btn_support = types.InlineKeyboardButton("الدعم الفني", url="https://t.me...")
     markup.add(btn_games, btn_support)
     
@@ -196,6 +196,6 @@ def callback_query(call):
             if action == "accept":
                 if item_type in ["itunes", "google"]:
                     admin_actions[ADMIN_ID] = {"action": "waiting_for_code", "user_id": target_user_id}
-                    bot.send_message(ADMIN_ID, "الرجاء أرسل رسالة تلقائيا للعميل")
+                    bot.send_message(ADMIN_ID, "الرجاء أرسل كود البطاقة للعميل:")
                 else:
                     pass
