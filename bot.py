@@ -1,7 +1,24 @@
 import telebot
 from telebot import types
 import os
+from flask import Flask
+from threading import Thread
 
+# --- تشغيل سيرفر وهمي للحفاظ على مجانية Render ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is Live and Running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- الإعدادات الأساسية للبوت ---
 TOKEN = "8826744317:AAHW1mreEvhIna70p0D0QOQ7-tKGH54yPXk"
 ADMIN_ID = 8192730669
 SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b9b06b5384"
@@ -136,4 +153,6 @@ def process_order_steps(message):
         del user_orders[user_id]
 
 if __name__ == "__main__":
+    # تشغيل السيرفر المساعد لتفادي إغلاق Render المجاني
+    keep_alive()
     bot.infinity_polling()
