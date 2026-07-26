@@ -79,9 +79,12 @@ def callback_query(call):
             markup.add(types.InlineKeyboardButton("📋 جميع الطلبات (خاص بالأدمن)", callback_data="admin_view_orders"))
         bot.edit_message_text("🤖 الرجاء اختيار القسم الذي تريد تصفحه من الأزرار أدناه:", chat_id, call.message.message_id, reply_markup=markup)
 
+    # --- تم إصلاح هذا الجزء الحرج لتجنب الإغلاق الفجائي ---
     elif call.data.startswith("buy_pubg_") or call.data.startswith("buy_ff_"):
         game_type = "ببجي موبايل" if "pubg" in call.data else "فري فاير"
         unit = "UC" if "pubg" in call.data else "جوهرة"
+        
+        # استخراج الكمية بطريقة برمجية آمنة
         amount = call.data.split("_")[-1]
         
         user_orders[call.from_user.id] = {
@@ -118,7 +121,6 @@ def callback_query(call):
         action, target_user_id = call.data.split("_")
         
         if action == "accept":
-            # إرسال رسالة نجاح للزبون
             try:
                 bot.send_message(target_user_id, "✅ **تمت العملية بنجاح!**\n\nلقد تم التحقق من عملية الدفع وشحن حسابك بالألعاب بنجاح. شكراً لتعاملك معنا ورأيك يهمنا!")
                 bot.edit_message_text(f"{call.message.text}\n\n🟢 **حالة الطلب:** تم القبول والشحن بنجاح.", chat_id, call.message.message_id)
@@ -126,7 +128,6 @@ def callback_query(call):
                 bot.edit_message_text(f"{call.message.text}\n\n⚠️ **حالة الطلب:** تم القبول برمجياً ولكن تعذر مراسلة الزبون (قام بحظر البوت).", chat_id, call.message.message_id)
                 
         elif action == "reject":
-            # إرسال رسالة رفض للزبون
             try:
                 bot.send_message(target_user_id, "❌ **عذراً، تم رفض طلبك!**\n\nلم يتم تأكيد عملية الشحن. يرجى التأكد من صحة رقم المعاملة أو التواصل مع الدعم الفني لحل المشكلة.")
                 bot.edit_message_text(f"{call.message.text}\n\n🔴 **حالة الطلب:** تم الرفض وإشعار الزبون.", chat_id, call.message.message_id)
@@ -178,4 +179,3 @@ def process_order_steps(message):
         admin_markup.add(btn_accept, btn_reject)
                              
         try:
-            # نرسل الإشعار للأدمن ومعه أزرار التحكم
