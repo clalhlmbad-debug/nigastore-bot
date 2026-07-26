@@ -45,7 +45,7 @@ PRICES = {
     "buy_itunes_50": 49.009,
     "buy_itunes_100": 95.663,
     
-    # فئات بطاقات غوغل بلاي الأمريكي بالأسعار الدقيقة من الصورة
+    # فئات بطاقات غوغل بلاي الأمريكي
     "buy_google_5": 5.123,
     "buy_google_10": 10.246,
     "buy_google_25": 25.615,
@@ -97,7 +97,7 @@ def callback_query(call):
         markup.add(
             types.InlineKeyboardButton(f"💎 110 Gems - {round(0.98 * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_110"),
             types.InlineKeyboardButton(f"💎 231 Gems - {round(1.96 * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_231"),
-            types.InlineKeyboardButton(f"💎 660 Gems - {round(9.19 * EXCHANGE_RATE)} ل.s", callback_data="buy_ff_660"),
+            types.InlineKeyboardButton(f"💎 660 Gems - {round(9.19 * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_660"),
             types.InlineKeyboardButton("🔙 العودة", callback_data="games_menu")
         )
         bot.edit_message_text("🛒 اختر الفئة المناسبة لفري فاير:", chat_id, call.message.message_id, reply_markup=markup)
