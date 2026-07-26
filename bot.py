@@ -109,7 +109,7 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص لمالك البوت فقط!")
 
-    # --- الأكواد للتحكم بالطلب (موافقة / رفض) ---
+    # --- معالجة أزرار التحكم بالطلب (صح / خطأ) بدون تعقيد مسافات ---
     elif call.data.startswith("accept_") or call.data.startswith("reject_"):
         if chat_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص للآدمن فقط!")
@@ -118,22 +118,16 @@ def callback_query(call):
         action, target_user_id = call.data.split("_")
         
         if action == "accept":
-            try:
-                bot.send_message(target_user_id, "✅ **تمت العملية بنجاح!**\n\nلقد تم التحقق من عملية الدفع وشحن حسابك بالألعاب بنجاح. شكراً لتعاملك معنا ورأيك يهمنا!")
-                bot.edit_message_text(f"{call.message.text}\n\n🟢 **حالة الطلب:** تم القبول والشحن بنجاح.", chat_id, call.message.message_id)
-            except Exception:
-                bot.edit_message_text(f"{call.message.text}\n\n⚠️ **حالة الطلب:** تم القبول برمجياً ولكن تعذر مراسلة الزبون (قام بحظر البوت).", chat_id, call.message.message_id)
+            bot.send_message(target_user_id, "✅ **تمت العملية بنجاح!**\n\nلقد تم التحقق من عملية الدفع وشحن حسابك بالألعاب بنجاح. شكراً لتعاملك معنا!")
+            bot.edit_message_text(f"{call.message.text}\n\n🟢 **حالة الطلب:** تم الشحن بنجاح ✅", chat_id, call.message.message_id)
                 
         elif action == "reject":
-            try:
-                bot.send_message(target_user_id, "❌ **عذراً، تم رفض طلبك!**\n\nلم يتم تأكيد عملية الشحن. يرجى التأكد من صحة رقم المعاملة أو التواصل مع الدعم الفني لحل المشكلة.")
-                bot.edit_message_text(f"{call.message.text}\n\n🔴 **حالة الطلب:** تم الرفض وإشعار الزبون.", chat_id, call.message.message_id)
-            except Exception:
-                bot.edit_message_text(f"{call.message.text}\n\n⚠️ **حالة الطلب:** تم الرفض برمجياً ولكن تعذر مراسلة الزبون.", chat_id, call.message.message_id)
+            bot.send_message(target_user_id, "❌ **عذراً، تم رفض طلبك!**\n\nلم يتم تأكيد عملية الشحن. يرجى التأكد من صحة رقم المعاملة أو التواصل مع الدعم الفني لحل المشكلة.")
+            bot.edit_message_text(f"{call.message.text}\n\n🔴 **حالة الطلب:** تم الرفض وإشعار الزبون ❌", chat_id, call.message.message_id)
                 
         bot.answer_callback_query(call.id)
 
-# --- معالجة الخطوات المتتالية (الآيدي ورقم المعاملة) ---
+# --- معالجة خطوات إدخال البيانات ---
 @bot.message_handler(func=lambda message: message.from_user.id in user_orders)
 def process_order_steps(message):
     user_id = message.from_user.id
@@ -143,37 +137,28 @@ def process_order_steps(message):
         user_orders[user_id]["player_id"] = message.text
         user_orders[user_id]["step"] = "get_payment"
         
-        payment_text = f"💰 **خطوة الدفع (الشام كاش):**\n\n" \
-                       f"يرجى إرسال مبلغ الفئة المطلوبة إلى عنوان الشام كاش التالي:\n" \
-                       f"📌 العنوان: `{SHAM_CASH_ACCOUNT}`\n\n" \
-                       f"⚠️ بعد إتمام التحويل، أرسل رقم المعاملة أو الرقم المرجعي هنا لتأكيد طلبك:"
+        payment_text = f"💰 **خطوة الدفع (الشام كاش):**\n\nيرجى إرسال مبلغ الفئة المطلوبة إلى عنوان الشام كاش التالي:\n📌 العنوان: `{SHAM_CASH_ACCOUNT}`\n\n⚠️ بعد إتمام التحويل، أرسل رقم المعاملة هنا لتأكيد طلبك:"
         bot.send_message(message.chat.id, payment_text, parse_mode="Markdown")
         
     elif step == "get_payment":
         user_orders[user_id]["transaction_id"] = message.text
         order_info = user_orders[user_id]
         
-        success_text = f"✅ **تم استلام تفاصيل طلبك بنجاح!**\n\n" \
-                       f"🎮 اللعبة: {order_info['game']}\n" \
-                       f"📦 الفئة: {order_info['amount']}\n" \
-                       f"🆔 معرف اللاعب (ID): `{order_info['player_id']}`\n" \
-                       f"🧾 رقم معاملة التحويل: `{order_info['transaction_id']}`\n\n" \
-                       f"⏳ جاري مراجعة عملية الدفع وشحن حسابك خلال دقائق معدودة. شكراً لثقتك بنا!"
+        success_text = f"✅ **تم استلام تفاصيل طلبك بنجاح!**\n\n🎮 اللعبة: {order_info['game']}\n📦 الفئة: {order_info['amount']}\n🆔 معرف اللاعب (ID): `{order_info['player_id']}`\n🧾 رقم المعاملة: `{order_info['transaction_id']}`\n\n⏳ جاري مراجعة طلبك خلال دقائق. شكراً لك!"
         bot.send_message(message.chat.id, success_text, parse_mode="Markdown")
         
         username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-        admin_notification = f"🚨 **طلب شحن جديد وصلك الآن!**\n\n" \
-                             f"👤 الزبون: {username} (ID: {user_id})\n" \
-                             f"🎮 اللعبة المطلوبة: {order_info['game']}\n" \
-                             f"📦 الكمية/الفئة: {order_info['amount']}\n" \
-                             f"🆔 آيدي اللاعب (ID): `{order_info['player_id']}`\n" \
-                             f"🧾 الرقم المرجعي للمعاملة: `{order_info['transaction_id']}`"
+        admin_notification = f"🚨 **طلب شحن جديد وصلك!**\n\n👤 الزبون: {username} (ID: {user_id})\n🎮 اللعبة: {order_info['game']}\n📦 الكمية: {order_info['amount']}\n🆔 آيدي اللاعب: `{order_info['player_id']}`\n🧾 الرقم المرجعي: `{order_info['transaction_id']}`"
                              
         admin_markup = types.InlineKeyboardMarkup(row_width=2)
         btn_accept = types.InlineKeyboardButton("🟢 شحن (صح)", callback_data=f"accept_{user_id}")
         btn_reject = types.InlineKeyboardButton("🔴 رفض الطلب (خطأ)", callback_data=f"reject_{user_id}")
         admin_markup.add(btn_accept, btn_reject)
                              
-        try:
-            bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown", reply_markup=admin_markup)
-        except Exception as e:
+        bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown", reply_markup=admin_markup)
+        save_order_to_file(admin_notification)
+        del user_orders[user_id]
+
+if __name__ == "__main__":
+    print("🤖 البوت يعمل بنجاح...")
+    bot.infinity_polling()
