@@ -9,9 +9,7 @@ SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b9b06b5384"
 
 bot = telebot.TeleBot(TOKEN)
 
-# مخزن مؤقت لحالات طلبات الزبائن الحالية
 user_orders = {}
-# اسم الملف النصي لحفظ جميع الطلبات بشكل دائم لزر الأدمن
 ORDERS_FILE = "all_orders.txt"
 
 def save_order_to_file(order_details):
@@ -26,7 +24,6 @@ def send_welcome(message):
     btn_support = types.InlineKeyboardButton("👨‍💻 الدعم الفني", callback_data="support_menu")
     markup.add(btn_games, btn_support)
     
-    # إذا كان المرسل هو الأدمن (أنت)، يظهر زر إضافي لرؤية كافة الطلبات
     if message.chat.id == ADMIN_ID:
         btn_admin = types.InlineKeyboardButton("📋 جميع الطلبات (خاص بالأدمن)", callback_data="admin_view_orders")
         markup.add(btn_admin)
@@ -82,7 +79,6 @@ def callback_query(call):
             markup.add(types.InlineKeyboardButton("📋 جميع الطلبات (خاص بالأدمن)", callback_data="admin_view_orders"))
         bot.edit_message_text("🤖 الرجاء اختيار القسم الذي تريد تصفحه من الأزرار أدناه:", chat_id, call.message.message_id, reply_markup=markup)
 
-    # بدء معالجة طلبات الشراء وتحديد اللعبة والكمية
     elif call.data.startswith("buy_pubg_") or call.data.startswith("buy_ff_"):
         game_type = "ببجي موبايل" if "pubg" in call.data else "فري فاير"
         unit = "UC" if "pubg" in call.data else "جوهرة"
@@ -97,7 +93,6 @@ def callback_query(call):
         bot.send_message(chat_id, f"🎮 الخاص بك في لعبة {game_type} الرجاء إدخال **الآيدي ID** الخاص بك:")
         bot.answer_callback_query(call.id)
 
-    # معالجة ضغط الأدمن على زر جميع الطلبات
     elif call.data == "admin_view_orders":
         if chat_id == ADMIN_ID:
             if os.path.exists(ORDERS_FILE) and os.path.getsize(ORDERS_FILE) > 0:
@@ -114,13 +109,38 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص لمالك البوت فقط!")
 
+    # --- الأكواد الجديدة للتحكم بالطلب (موافقة / رفض) ---
+    elif call.data.startswith("accept_") or call.data.startswith("reject_"):
+        if chat_id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص للآدمن فقط!")
+            return
+            
+        action, target_user_id = call.data.split("_")
+        
+        if action == "accept":
+            # إرسال رسالة نجاح للزبون
+            try:
+                bot.send_message(target_user_id, "✅ **تمت العملية بنجاح!**\n\nلقد تم التحقق من عملية الدفع وشحن حسابك بالألعاب بنجاح. شكراً لتعاملك معنا ورأيك يهمنا!")
+                bot.edit_message_text(f"{call.message.text}\n\n🟢 **حالة الطلب:** تم القبول والشحن بنجاح.", chat_id, call.message.message_id)
+            except Exception:
+                bot.edit_message_text(f"{call.message.text}\n\n⚠️ **حالة الطلب:** تم القبول برمجياً ولكن تعذر مراسلة الزبون (قام بحظر البوت).", chat_id, call.message.message_id)
+                
+        elif action == "reject":
+            # إرسال رسالة رفض للزبون
+            try:
+                bot.send_message(target_user_id, "❌ **عذراً، تم رفض طلبك!**\n\nلم يتم تأكيد عملية الشحن. يرجى التأكد من صحة رقم المعاملة أو التواصل مع الدعم الفني لحل المشكلة.")
+                bot.edit_message_text(f"{call.message.text}\n\n🔴 **حالة الطلب:** تم الرفض وإشعار الزبون.", chat_id, call.message.message_id)
+            except Exception:
+                bot.edit_message_text(f"{call.message.text}\n\n⚠️ **حالة الطلب:** تم الرفض برمجياً ولكن تعذر مراسلة الزبون.", chat_id, call.message.message_id)
+                
+        bot.answer_callback_query(call.id)
+
 # --- معالجة الخطوات المتتالية (الآيدي ورقم المعاملة) ---
 @bot.message_handler(func=lambda message: message.from_user.id in user_orders)
 def process_order_steps(message):
     user_id = message.from_user.id
     step = user_orders[user_id]["step"]
     
-    # الخطوة الأولى: استقبال الـ ID
     if step == "get_id":
         user_orders[user_id]["player_id"] = message.text
         user_orders[user_id]["step"] = "get_payment"
@@ -131,12 +151,10 @@ def process_order_steps(message):
                        f"⚠️ بعد إتمام التحويل، أرسل رقم المعاملة أو الرقم المرجعي هنا لتأكيد طلبك:"
         bot.send_message(message.chat.id, payment_text, parse_mode="Markdown")
         
-    # الخطوة الثانية والأخيرة: استقبال رقم المعاملة وإرسال الإشعارات وحفظ البيانات
     elif step == "get_payment":
         user_orders[user_id]["transaction_id"] = message.text
         order_info = user_orders[user_id]
         
-        # 1. إرسال تأكيد مباشر للزبون بنجاح العملية
         success_text = f"✅ **تم استلام تفاصيل طلبك بنجاح!**\n\n" \
                        f"🎮 اللعبة: {order_info['game']}\n" \
                        f"📦 الفئة: {order_info['amount']}\n" \
@@ -145,27 +163,19 @@ def process_order_steps(message):
                        f"⏳ جاري مراجعة عملية الدفع وشحن حسابك خلال دقائق معدودة. شكراً لثقتك بنا!"
         bot.send_message(message.chat.id, success_text, parse_mode="Markdown")
         
-        # 2. تجهيز وإرسال الإشعار الفوري لك (للأدمن)
         username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
         admin_notification = f"🚨 **طلب شحن جديد وصلك الآن!**\n\n" \
-                             f"👤 الحساب المستطرد للزبون: {username} (ID: {user_id})\n" \
+                             f"👤 الزبون: {username} (ID: {user_id})\n" \
                              f"🎮 اللعبة المطلوبة: {order_info['game']}\n" \
                              f"📦 الكمية/الفئة: {order_info['amount']}\n" \
                              f"🆔 آيدي اللاعب (ID): `{order_info['player_id']}`\n" \
                              f"🧾 الرقم المرجعي للمعاملة: `{order_info['transaction_id']}`"
                              
+        # إنشاء أزرار التحكم الفورية للآدمن
+        admin_markup = types.InlineKeyboardMarkup(row_width=2)
+        btn_accept = types.InlineKeyboardButton("🟢 شحن (صح)", callback_data=f"accept_{user_id}")
+        btn_reject = types.InlineKeyboardButton("🔴 رفض الطلب (خطأ)", callback_data=f"reject_{user_id}")
+        admin_markup.add(btn_accept, btn_reject)
+                             
         try:
-            bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown")
-        except Exception as e:
-            print(f"حدث خطأ أثناء إرسال الرسالة لحساب الأدمن الرئيسي: {e}")
-            
-        # 3. حفظ الطلب في الملف النصي ليعمل مع زر "جميع الطلبات"
-        save_order_to_file(admin_notification)
-        
-        # 4. تنظيف ذاكرة الطلبات الحالية للمستخدم لإتاحة طلب جديد لاحقاً
-        del user_orders[user_id]
-
-# --- تشغيل البوت المستمر ---
-if __name__ == "__main__":
-    print("🤖 البوت مبرمج وتعمل إشعاراته الآن بنجاح...")
-    bot.infinity_polling()
+            # نرسل الإشعار للأدمن ومعه أزرار التحكم
