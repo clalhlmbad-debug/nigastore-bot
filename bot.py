@@ -19,7 +19,7 @@ def keep_alive():
     t.start()
 
 # --- الإعدادات الأساسية للبوت ---
-TOKEN = "8020744317:AAHmTmreEVhina7QpODQQOq7-tKGH54yPXK"
+TOKEN = "8826744317:AAHW1mreEvhIna70p0D0QOQ7-tKGH54yPXk"
 ADMIN_ID = 8192730609
 SHAM_CASH_ACCOUNT = "df018e178a027a6fbca89b9b6b5384"
 EXCHANGE_RATE = 145
@@ -191,10 +191,10 @@ def callback_query(call):
             target_user_id = data_parts[1]
             
             if action == "accept":
-                bot.send_message(target_user_id, "✅ تم حسابك بالألعاب والبطاقات بنجاح ومبروك الشحن!")
-                bot.edit_message_text("✅ تم قبول الطلب وشحن الحساب للمشترك بنجاح.", chat_id, call.message.message_id)
+                try:
+                    bot.send_message(target_user_id, "✅ تم حسابك بالألعاب والبطاقات بنجاح ومبروك الشحن!")
+                    bot.edit_message_text("✅ تم قبول الطلب وشحن الحساب للمشترك بنجاح.", chat_id, call.message.message_id)
+                except Exception:
+                    bot.edit_message_text("❌ حدث خطأ أثناء إرسال رسالة للمستخدم، لكن العملية مقبولة برمجياً.", chat_id, call.message.message_id)
             elif action == "reject":
-                bot.send_message(target_user_id, "❌ عذراً، تم رفض طلب الشحن الخاص بك. يرجى التواصل مع الدعم لمزيد من التفاصيل.")
-                bot.edit_message_text("🛑 تم رفض وإلغاء هذا الطلب بنجاح.", chat_id, call.message.message_id)
-            bot.answer_callback_query(call.id)
-
+                try:
