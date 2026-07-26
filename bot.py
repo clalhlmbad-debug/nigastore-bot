@@ -7,7 +7,7 @@ TOKEN = "8826744317:AAHW1mreEvhIna70p0D0QOQ7-tKGH54yPXk"
 ADMIN_ID = 8192730669
 SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b9b06b5384"
 
-# سعر الصرف الجديد (1 دولار = 145 ليرة سورية جديدة)
+# سعر الصرف المعتمد (1 دولار = 145 ليرة سورية جديدة)
 EXCHANGE_RATE = 145
 
 bot = telebot.TeleBot(TOKEN)
@@ -96,7 +96,6 @@ def callback_query(call):
         unit = "UC" if "pubg" in call.data else "جوهرة"
         amount = call.data.split("_")[-1]
         
-        # جلب السعر بالليرة السورية بناءً على معرف الكود المختار وسعر الصرف
         price_in_usd = PRICES.get(call.data, 0.0)
         price_in_syr = round(price_in_usd * EXCHANGE_RATE)
         
@@ -126,12 +125,15 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص لمالك البوت فقط!")
 
+    # --- تم إصلاح التقسيم هنا ليعمل السيرفر بشكل سليم ومستقر ---
     elif call.data.startswith("accept_") or call.data.startswith("reject_"):
         if chat_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص للآدمن فقط!")
             return
             
-        action, target_user_id = call.data.split("_")
+        data_parts = call.data.split("_")
+        action = data_parts[0]
+        target_user_id = data_parts[1]
         
         if action == "accept":
             bot.send_message(target_user_id, "✅ **تمت العملية بنجاح!**\n\nلقد تم التحقق من عملية الدفع وشحن حسابك بالألعاب بنجاح. شكراً لتعاملك معنا!")
@@ -154,7 +156,6 @@ def process_order_steps(message):
         user_orders[user_id]["step"] = "get_payment"
         order_info = user_orders[user_id]
         
-        # التعديل هنا: يظهر السعر الإجمالي بالليرة السورية تلقائياً في رسالة الدفع
         payment_text = f"💰 **خطوة الدفع (الشام كاش):**\n\n" \
                        f"💵 المبلغ الإجمالي المطلوب: **{order_info['price_syr']} ليرة سورية جديدة**\n\n" \
                        f"يرجى إرسال مبلغ الفئة المطلوبة إلى عنوان الشام كاش التالي:\n" \
