@@ -125,7 +125,7 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص لمالك البوت فقط!")
 
-    # --- تم إصلاح التقسيم هنا ليعمل السيرفر بشكل سليم ومستقر ---
+    # --- تم إصلاح الفهارس البرمجية هنا [0] و [1] بشكل سليم تماماً ---
     elif call.data.startswith("accept_") or call.data.startswith("reject_"):
         if chat_id != ADMIN_ID:
             bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص للآدمن فقط!")
