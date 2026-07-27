@@ -5,60 +5,56 @@ import uuid
 from flask import Flask
 from threading import Thread
 
-# --- تشغيل سيرفر ويب متوافق مع منفذ Render الديناميكي ---
+# --- تشغيل سيرفر ويب متكامل متوافق تماماً مع شروط Render ---
 app = Flask('')
 
 @app.route('/')
 def home():
     return "Niga Store Bot is Active and Live!"
 
+# مسار إضافي لتأكيد عمل السيرفر الداخلي
+@app.route('/healthz')
+def health_check():
+    return "OK", 200
+
 def run():
+    # سحب المنفذ ديناميكياً وتثبيته على 0.0.0.0 لاستقبال طلبات المنصة بنجاح
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 def keep_alive():
     t = Thread(target=run)
+    t.daemon = True # جعل المسار يعمل كخلفية مستمرة لضمان عدم توقفه
     t.start()
 
 # --- الإعدادات الأساسية للبوت ---
 TOKEN = "8826744317:AAHR9wuT8sNK0Vg98uCcGmaps7-YntrSWiQ"
 ADMIN_ID = 8192730669
-EXCHANGE_RATE = 145  # سعر الصرف الافتراضي: 1$ = 145 ل.س
+EXCHANGE_RATE = 145  
 
-# تم إضافة ملاحظة التحويل اليدوي لاسم خيار سيريتل كاش هنا
 PAYMENT_METHODS = {
     "sham_cash": {"name": "💳 شام كاش", "account": "df910e178e027a6bfcae8b9b06b5384"},
     "syriatel_cash": {"name": "📱 سيريتل كاش (تحويل يدوي حصراً)", "account": "0998211716"}
 }
 
 bot = telebot.TeleBot(TOKEN)
-
-# قواميس تتبع الخطوات لضمان الثبات والأمان الكامل
-user_orders = {}  # لتخزين بيانات طلب الزبون الحالية
-admin_steps = {}  # لتتبع خطوات الأدمن عند كتابة كود أو تأكيد الشحن
+user_orders = {}  
+admin_steps = {}  
 ORDERS_FILE = "all_orders.txt"
 
-# --- قاعدة بيانات الأسعار والفئات بالدولار ($) ---
 PRICES = {
-    # 🎮 قسم الألعاب
     "pubg_60": {"name": "ببجي 60 UC", "usd": 0.906, "input": "🆔 آيدي اللاعب:"},
     "pubg_325": {"name": "ببجي 325 UC", "usd": 4.558, "input": "🆔 آيدي اللاعب:"},
     "pubg_660": {"name": "ببجي 660 UC", "usd": 9.115, "input": "🆔 آيدي اللاعب:"},
     "ff_110": {"name": "فري فاير 110 جوهرة", "usd": 0.951, "input": "🆔 آيدي اللاعب:"},
     "ff_530": {"name": "فري فاير 530 جوهرة", "usd": 4.783, "input": "🆔 آيدي اللاعب:"},
-    
-    # 💳 قسم البطاقات
     "google_5": {"name": "بطاقة غوغل 5$", "usd": 5.123, "input": "📧 البريد الإلكتروني أو الواتساب:"},
     "google_10": {"name": "بطاقة غوغل 10$", "usd": 10.246, "input": "📧 البريد الإلكتروني أو الواتساب:"},
     "apple_5": {"name": "بطاقة آيتونز 5$", "usd": 4.966, "input": "📧 البريد الإلكتروني أو الواتساب:"},
     "apple_10": {"name": "بطاقة آيتونز 10$", "usd": 9.932, "input": "📧 البريد الإلكتروني أو الواتساب:"},
-    
-    # 📱 قسم البرامج والاشتراكات
     "tg_premium_1m": {"name": "تليجرام مميز (شهر)", "usd": 3.99, "input": "👤 معرف حسابك (@username):"},
     "tg_premium_3m": {"name": "تليجرام مميز (3 أشهر)", "usd": 11.99, "input": "👤 معرف حسابك (@username):"},
     "netflix_1m": {"name": "حساب نتفلكس (شهر)", "usd": 4.50, "input": "📧 إيميل استلام الحساب:"},
-    
-    # 🚀 قسم السوشيال ميديا
     "insta_1k": {"name": "1000 متابع إنستغرام", "usd": 1.20, "input": "🔗 رابط الحساب أو المقطع:"},
     "tiktok_1k": {"name": "1000 متابع تيك توك", "usd": 1.50, "input": "🔗 رابط الحساب أو المقطع:"}
 }
@@ -67,7 +63,6 @@ def save_order_to_file(order_details):
     with open(ORDERS_FILE, "a", encoding="utf-8") as f:
         f.write(order_details + "\n" + "-"*30 + "\n")
 
-# --- قائمة البداية والترحيب ---
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -80,15 +75,12 @@ def send_welcome(message):
     )
     if message.chat.id == ADMIN_ID:
         markup.add(types.InlineKeyboardButton("📋 سجل الأرشيف كاملاً", callback_data="admin_view_orders"))
-        
     welcome_text = f"👋 مرحباً بك في متجر **Niga Store** المتكامل!\n\n📌 سعر الصرف المعتمد: 1$ = {EXCHANGE_RATE} ل.س\n\n⚡ اختر القسم الذي ترغب بتصفحه من الأزرار أدناه:"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
-# --- معالجة الضغط على الأزرار (Callback Queries) ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
-    
     if call.data == "main_menu":
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
@@ -176,3 +168,6 @@ def callback_query(call):
             user_orders[u_id]["payment_method"] = method_info["name"]
             user_orders[u_id]["step"] = "get_transaction"
             
+            additional_note = "\n⚠️ **ملاحظة هامة:** يرجى الانتباه أن التحويل عبر سيريتل كاش يجب أن يكون يدويّاً حصراً من خطك!" if method_key == "syriatel_cash" else ""
+            
+            pay_instruction = (
