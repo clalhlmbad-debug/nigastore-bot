@@ -5,27 +5,7 @@ import uuid
 from flask import Flask
 from threading import Thread
 
-# --- تشغيل سيرفر ويب متكامل متوافق مع شروط الاستضافة ---
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Niga Store Bot is Active and Live!"
-
-@app.route('/healthz')
-def health_check():
-    return "OK", 200
-
-def run():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.daemon = True 
-    t.start()
-
-# --- الإعدادات الأساسية للبوت ---
+# --- إعدادات البوت والمسؤول ---
 TOKEN = "8826744317:AAHR9wuT8sNK0Vg98uCcGmaps7-YntrSWiQ"
 ADMIN_ID = 8192730669
 EXCHANGE_RATE = 145  
@@ -166,6 +146,12 @@ def callback_query(call):
             user_orders[u_id]["payment_method"] = method_info["name"]
             user_orders[u_id]["step"] = "get_transaction"
             
-            # تم إصلاح دمج النص هنا لمنع حدوث خطأ الأقواس والسينتكس نهائياً
             additional_note = "\n⚠️ **ملاحظة هامة:** يرجى الانتباه أن التحويل عبر سيريتل كاش يجب أن يكون يدويّاً حصراً من خطك!" if method_key == "syriatel_cash" else ""
             
+            pay_instruction = f"💸 **⚡ تعليمات التحويل عبر {method_info['name']}:**\n\n📌 يرجى إرسال مبلغ قدره: **{user_orders[u_id]['price_syr']} ل.س**\n📥 إلى الحساب أو الرقم التالي: `{method_info['account']}`{additional_note}\n\n⚠️ **بعد إتمام التحويل الناجح:**\nاكتب هنا في الشات رقم المعاملة أو الإشعار نصاً لتأكيد طلبك:"
+            bot.send_message(chat_id, pay_instruction, parse_mode="Markdown")
+            bot.answer_callback_query(call.id)
+
+    elif call.data == "admin_view_orders" and chat_id == ADMIN_ID:
+        if os.path.exists(ORDERS_FILE) and os.path.getsize(ORDERS_FILE) > 0:
+            with open(ORDERS_FILE, "r", encoding="utf-8") as f:
