@@ -179,7 +179,7 @@ def callback_query(call):
             "amount": amount, 
             "price": price_in_syr, 
             "step": "get_id",
-            "code_name": call.data # لحفظ نوع المنتج الأساسي للفحص لاحقاً
+            "code_name": call.data
         }
         
         if "itunes" in call.data or "google" in call.data:
@@ -204,3 +204,4 @@ def callback_query(call):
     elif call.data.startswith("accept_") or call.data.startswith("reject_"):
         if chat_id == ADMIN_ID:
             data_parts = call.data.split("_")
+            action = data_parts[0]
