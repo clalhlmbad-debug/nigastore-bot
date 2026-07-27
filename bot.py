@@ -5,14 +5,13 @@ import uuid
 from flask import Flask
 from threading import Thread
 
-# --- تشغيل سيرفر ويب متكامل متوافق تماماً مع شروط Render ---
+# --- تشغيل سيرفر ويب متكامل متوافق مع شروط الاستضافة ---
 app = Flask('')
 
 @app.route('/')
 def home():
     return "Niga Store Bot is Active and Live!"
 
-# مسار إضافي لتأكيد عمل السيرفر الداخلي
 @app.route('/healthz')
 def health_check():
     return "OK", 200
@@ -167,7 +166,6 @@ def callback_query(call):
             user_orders[u_id]["payment_method"] = method_info["name"]
             user_orders[u_id]["step"] = "get_transaction"
             
+            # تم إصلاح دمج النص هنا لمنع حدوث خطأ الأقواس والسينتكس نهائياً
             additional_note = "\n⚠️ **ملاحظة هامة:** يرجى الانتباه أن التحويل عبر سيريتل كاش يجب أن يكون يدويّاً حصراً من خطك!" if method_key == "syriatel_cash" else ""
             
-            pay_instruction = (
-                f"💸 **⚡ تعليمات التحويل عبر {method_info['name']}:**\n\n"
