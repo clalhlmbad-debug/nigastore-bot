@@ -12,7 +12,9 @@ def home():
     return "Bot is Live and Running!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    # تعديل جوهري: سحب المنفذ ديناميكياً من بيئة Render لتفادي الإغلاق المبكر
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
@@ -26,7 +28,7 @@ EXCHANGE_RATE = 145
 
 bot = telebot.TeleBot(TOKEN)
 user_orders = {}
-admin_steps = {} # قاموس لتتبع خطوات الأدمن عند كتابة الأكواد
+admin_steps = {} 
 ORDERS_FILE = "all_orders.txt"
 
 PRICES = {
@@ -35,12 +37,10 @@ PRICES = {
     "buy_pubg_660": 9.19,
     "buy_ff_110": 0.98,
     "buy_ff_231": 1.96,
-    # غوغل بلاي أمريكي
     "buy_card_google_5": 5.123,
     "buy_card_google_10": 10.246,
     "buy_card_google_25": 25.615,
     "buy_card_google_50": 51.23,
-    # آيتونز / آبل
     "buy_card_apple_2": 1.976,
     "buy_card_apple_5": 4.966,
     "buy_card_apple_10": 9.932,
@@ -139,7 +139,7 @@ def callback_query(call):
     elif call.data == "support_menu":
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("💬 تواصل مع المطور", url="https://t.me"), # 🌟 تم تحديث رابط المعرف هنا
+            types.InlineKeyboardButton("💬 تواصل مع الدعم", url="https://t.me"),
             types.InlineKeyboardButton("🔙 العودة", callback_data="main_menu")
         )
         bot.edit_message_text("👨‍💻 للدعم الفني تواصل معنا عبر الزر أدناه:", chat_id, call.message.message_id, reply_markup=markup)
@@ -188,3 +188,4 @@ def callback_query(call):
                 bot.send_message(chat_id, f"📋 **الطلبات المسجلة:**\n\n{orders_data}")
         else:
             bot.send_message(chat_id, "📋 لا توجد طلبات مسجلة حتى الآن.")
+        bot.answer_callback_query(call.id)
