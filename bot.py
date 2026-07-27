@@ -18,13 +18,12 @@ def health_check():
     return "OK", 200
 
 def run():
-    # سحب المنفذ ديناميكياً وتثبيته على 0.0.0.0 لاستقبال طلبات المنصة بنجاح
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 def keep_alive():
     t = Thread(target=run)
-    t.daemon = True # جعل المسار يعمل كخلفية مستمرة لضمان عدم توقفه
+    t.daemon = True 
     t.start()
 
 # --- الإعدادات الأساسية للبوت ---
@@ -171,3 +170,4 @@ def callback_query(call):
             additional_note = "\n⚠️ **ملاحظة هامة:** يرجى الانتباه أن التحويل عبر سيريتل كاش يجب أن يكون يدويّاً حصراً من خطك!" if method_key == "syriatel_cash" else ""
             
             pay_instruction = (
+                f"💸 **⚡ تعليمات التحويل عبر {method_info['name']}:**\n\n"
