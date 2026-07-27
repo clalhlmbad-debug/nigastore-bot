@@ -19,7 +19,7 @@ def keep_alive():
     t.start()
 
 # ---- الإعدادات الأساسية للبوت ----
-TOKEN = "8020744317:AAHmImreeVhina7QpOCOQDQq7-tKGH54yPXK"
+TOKEN = "8826744317:AAHR9wuT8sNK0Vg98uCcGmaps7-YntrSWiQ"
 ADMIN_ID = 8102730609
 SHAM_CASH_ACCOUNT = "df101ae178a027fa6fbca89b9b6b5384"
 EXCHANGE_RATE = 145
@@ -189,9 +189,9 @@ def callback_query(call):
     if call.data.startswith("accept_") or call.data.startswith("reject_"):
         if chat_id == ADMIN_ID:
             data_parts = call.data.split("_")
-            action = data_parts[0]
-            target_user_id = int(data_parts[1])
-            item_type = data_parts[2] if len(data_parts) > 2 else "game"
+            action = data_parts
+            target_user_id = int(data_parts)
+            item_type = data_parts if len(data_parts) > 2 else "game"
             
             if action == "accept":
                 if item_type in ["itunes", "google"]:
