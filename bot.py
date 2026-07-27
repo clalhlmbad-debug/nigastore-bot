@@ -144,7 +144,7 @@ def callback_query(call):
     elif call.data == "support_menu":
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("تواصل مع المطور 👨‍💻", url="https://t.me"),
+            types.InlineKeyboardButton("تواصل مع المطور 👨‍💻", url="https://t.me/m_niga2"),
             types.InlineKeyboardButton("العودة ↩️", callback_data="main_menu")
         )
         bot.edit_message_text("للدعم الفني والاستفسارات تواصل معنا عبر الرابط أدناه:", chat_id, call.message.message_id, reply_markup=markup)
