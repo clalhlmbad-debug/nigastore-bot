@@ -62,7 +62,7 @@ def save_order_to_file(order_details):
 def send_welcome(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
     btn_games = types.InlineKeyboardButton("قسم الالعاب والبطاقات", callback_data="games_menu")
-    btn_support = types.InlineKeyboardButton("الدعم الفني", url="https://t.me...")
+    btn_support = types.InlineKeyboardButton("الدعم الفني", url="https://t.me")
     markup.add(btn_games, btn_support)
     
     if message.chat.id == ADMIN_ID:
@@ -144,7 +144,7 @@ def callback_query(call):
     elif call.data == "main_menu":
         markup = types.InlineKeyboardMarkup(row_width=2)
         btn_games = types.InlineKeyboardButton("قسم الالعاب والبطاقات", callback_data="games_menu")
-        btn_support = types.InlineKeyboardButton("الدعم الفني", url="https://t.me...")
+        btn_support = types.InlineKeyboardButton("الدعم الفني", url="https://t.me")
         markup.add(btn_games, btn_support)
         
         if chat_id == ADMIN_ID:
@@ -199,3 +199,9 @@ def callback_query(call):
                     bot.send_message(ADMIN_ID, "الرجاء أرسل كود البطاقة للعميل:")
                 else:
                     pass
+
+# تشغيل السيرفر الوهمي لحماية البوت من التوقف
+keep_alive()
+
+# تشغيل استقبال الرسائل المستمر للبوت داخل تيليجرام
+bot.infinity_polling(timeout=10, long_polling_timeout=5)
