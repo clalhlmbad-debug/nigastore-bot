@@ -29,19 +29,18 @@ bot = telebot.TeleBot(TOKEN)
 user_orders = {}
 ORDERS_FILE = "all_orders.txt"
 
-# تحديث الأسعار بدقة لتطابق فئات الآيتونز وغوغل بلاي في الصور المرسلة
 PRICES = {
     "buy_pubg_60": 0.92,
     "buy_pubg_325": 4.59,
     "buy_pubg_660": 9.19,
     "buy_ff_110": 0.98,
     "buy_ff_231": 1.96,
-    # غوغل بلاي (من الصورة السابقة)
+    # غوغل بلاي
     "buy_card_google_5": 5.123,
     "buy_card_google_10": 10.246,
     "buy_card_google_25": 25.615,
     "buy_card_google_50": 51.23,
-    # آيتونز (من الصورة الحالية)
+    # آيتونز
     "buy_card_apple_2": 1.976,
     "buy_card_apple_5": 4.966,
     "buy_card_apple_10": 9.932,
@@ -49,7 +48,6 @@ PRICES = {
     "buy_card_apple_20": 19.604,
     "buy_card_apple_25": 23.942,
     "buy_card_apple_50": 49.009
-    # فئة 100$ تم استثناؤها لأنها غير متاحة في المتجر
 }
 
 def save_order_to_file(order_details):
@@ -105,7 +103,7 @@ def callback_query(call):
         bot.edit_message_text("🤖 اختر فئة بطاقة غوغل بلاي الأمريكية:", chat_id, call.message.message_id, reply_markup=markup)
 
     elif call.data == "apple_cards":
-        markup = types.InlineKeyboardMarkup(row_width=2) # تم تعديل العرض ليكون زرين في السطر للتنظيم
+        markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             types.InlineKeyboardButton(f"🍏 آيتونز 2$ - {round(PRICES['buy_card_apple_2'] * EXCHANGE_RATE)} ل.س", callback_data="buy_card_apple_2"),
             types.InlineKeyboardButton(f"🍏 آيتونز 5$ - {round(PRICES['buy_card_apple_5'] * EXCHANGE_RATE)} ل.س", callback_data="buy_card_apple_5"),
@@ -114,7 +112,7 @@ def callback_query(call):
             types.InlineKeyboardButton(f"🍏 آيتونز 20$ - {round(PRICES['buy_card_apple_20'] * EXCHANGE_RATE)} ل.س", callback_data="buy_card_apple_20"),
             types.InlineKeyboardButton(f"🍏 آيتونز 25$ - {round(PRICES['buy_card_apple_25'] * EXCHANGE_RATE)} ل.س", callback_data="buy_card_apple_25"),
             types.InlineKeyboardButton(f"🍏 آيتونز 50$ - {round(PRICES['buy_card_apple_50'] * EXCHANGE_RATE)} ل.س", callback_data="buy_card_apple_50"),
-            types.InlineKeyboardButton("❌ آيتونز 100$ (غير متاح حالياً)", callback_data="card_unavailable")
+            types.InlineKeyboardButton("❌ آيتونز 100$ (غير متاح)", callback_data="card_unavailable")
         )
         markup.add(types.InlineKeyboardButton("🔙 العودة", callback_data="cards_menu"))
         bot.edit_message_text("🍏 اختر فئة بطاقة آبل / آيتونز المتاحة:", chat_id, call.message.message_id, reply_markup=markup)
@@ -186,4 +184,8 @@ def callback_query(call):
         if os.path.exists(ORDERS_FILE) and os.path.getsize(ORDERS_FILE) > 0:
             with open(ORDERS_FILE, "r", encoding="utf-8") as f:
                 orders_data = f.read()
+            # هنا تم إصلاح المسافات (المحاذاة) التي سببت توقف السيرفر
             if len(orders_data) > 4000:
+                with open(ORDERS_FILE, "rb") as f:
+                    bot.send_document(chat_id, f, caption="📋 قائمة الطلبات الكاملة")
+            else:
