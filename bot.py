@@ -1,6 +1,8 @@
 import telebot
 from telebot import types
 import os
+import requests
+import uuid
 from flask import Flask
 from threading import Thread
 
@@ -12,7 +14,8 @@ def home():
     return "Bot is Live and Running!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
@@ -24,21 +27,56 @@ ADMIN_ID = 8192730669
 SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b9b06b5384"
 EXCHANGE_RATE = 145
 
+# --- إعدادات الـ API الخاصة بموقع نمر كارد ---
+API_TOKEN = "AatfAkAcp6XKyQKPYru8ZyaAZ6H0VKyNb4FXx1sgbV8hAthEgw8Z0hQjNZNvcZs-"
+BASE_URL = "https://nemer-card.com"
+
 bot = telebot.TeleBot(TOKEN)
 user_orders = {}
 ORDERS_FILE = "all_orders.txt"
 
+# تحديث الأسعار بدقة لتطابق فئات ببجي وفري فاير حسب الصور المرسلة
 PRICES = {
-    "buy_pubg_60": 0.92,
-    "buy_pubg_325": 4.59,
-    "buy_pubg_660": 9.19,
-    "buy_ff_110": 0.98,
-    "buy_ff_231": 1.96
+    # ببجي موبايل 
+    "buy_pubg_60": {"price_usd": 0.906, "api_id": 18},     # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_pubg_325": {"price_usd": 4.558, "api_id": 325},   # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_pubg_660": {"price_usd": 9.115, "api_id": 660},   # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_pubg_1800": {"price_usd": 22.788, "api_id": 1800}, # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_pubg_3850": {"price_usd": 45.320, "api_id": 3850}, # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_pubg_8100": {"price_usd": 90.640, "api_id": 8100}, # 🌟 استبدل بـ ID المنتج من نمر كارد
+    
+    # فري فاير (محدثة بالكامل حسب الصورة الأخيرة)
+    "buy_ff_110": {"price_usd": 0.951, "api_id": 110},     # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_ff_200": {"price_usd": 1.912, "api_id": 200},     # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_ff_530": {"price_usd": 4.783, "api_id": 530},     # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_ff_1080": {"price_usd": 9.590, "api_id": 1080},   # 🌟 استبدل بـ ID المنتج من نمر كارد
+    "buy_ff_2200": {"price_usd": 16.707, "api_id": 2200}   # 🌟 استبدل بـ ID المنتج من نمر كارد
 }
 
 def save_order_to_file(order_details):
     with open(ORDERS_FILE, "a", encoding="utf-8") as f:
         f.write(order_details + "\n" + "-"*30 + "\n")
+
+# دالة إرسال الطلب تلقائياً إلى السيرفر المورد عبر الـ API
+def send_order_to_api(product_id, player_id):
+    url = f"{BASE_URL}/client/api/newOrder/{product_id}/params"
+    headers = {
+        "api-token": API_TOKEN,
+        "Content-Type": "application/json"
+    }
+    order_uuid = str(uuid.uuid4())
+    payload = {
+        "qty": 1,
+        "playerId": player_id,
+        "order_uuid": order_uuid
+    }
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        if response.status_code == 200:
+            return response.json()
+        return {"status": "ERROR", "message": f"Server error code {response.status_code}"}
+    except Exception as e:
+        return {"status": "ERROR", "message": str(e)}
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -66,17 +104,24 @@ def callback_query(call):
     elif call.data == "pubg_info":
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton(f"📦 60 UC - {round(0.92 * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_60"),
-            types.InlineKeyboardButton(f"📦 325 UC - {round(4.59 * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_325"),
-            types.InlineKeyboardButton(f"📦 660 UC - {round(9.19 * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_660"),
+            types.InlineKeyboardButton(f"📦 60 UC - {round(PRICES['buy_pubg_60']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_60"),
+            types.InlineKeyboardButton(f"📦 325 UC - {round(PRICES['buy_pubg_325']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_325"),
+            types.InlineKeyboardButton(f"📦 660 UC - {round(PRICES['buy_pubg_660']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_660"),
+            types.InlineKeyboardButton(f"📦 1800 UC - {round(PRICES['buy_pubg_1800']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_1800"),
+            types.InlineKeyboardButton(f"📦 3850 UC - {round(PRICES['buy_pubg_3850']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_3850"),
+            types.InlineKeyboardButton(f"📦 8100 UC - {round(PRICES['buy_pubg_8100']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_pubg_8100"),
             types.InlineKeyboardButton("🔙 العودة", callback_data="games_menu")
         )
         bot.edit_message_text("📱 اختر الفئة المناسبة لببجي:", chat_id, call.message.message_id, reply_markup=markup)
     elif call.data == "ff_info":
         markup = types.InlineKeyboardMarkup(row_width=1)
+        # تحديث الأزرار والمحاذاة الحسابية لفئات فري فاير الجديدة بالليرة السورية
         markup.add(
-            types.InlineKeyboardButton(f"💎 110 Gems - {round(0.98 * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_110"),
-            types.InlineKeyboardButton(f"💎 231 Gems - {round(1.96 * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_231"),
+            types.InlineKeyboardButton(f"💎 110 Gems - {round(PRICES['buy_ff_110']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_110"),
+            types.InlineKeyboardButton(f"💎 200 Gems - {round(PRICES['buy_ff_200']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_200"),
+            types.InlineKeyboardButton(f"💎 530 Gems - {round(PRICES['buy_ff_530']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_530"),
+            types.InlineKeyboardButton(f"💎 1080 Gems - {round(PRICES['buy_ff_1080']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_1080"),
+            types.InlineKeyboardButton(f"💎 2200 Gems - {round(PRICES['buy_ff_2200']['price_usd'] * EXCHANGE_RATE)} ل.س", callback_data="buy_ff_2200"),
             types.InlineKeyboardButton("🔙 العودة", callback_data="games_menu")
         )
         bot.edit_message_text("🔥 اختر الفئة المناسبة لفري فاير:", chat_id, call.message.message_id, reply_markup=markup)
@@ -97,11 +142,19 @@ def callback_query(call):
             markup.add(types.InlineKeyboardButton("📋 جميع الطلبات", callback_data="admin_view_orders"))
         bot.edit_message_text("🤖 اختر القسم المناسب من الأزرار أدناه:", chat_id, call.message.message_id, reply_markup=markup)
     elif call.data.startswith("buy_"):
+        item_config = PRICES.get(call.data)
         game_type = "ببجي موبايل" if "pubg" in call.data else "فري فاير"
         unit = "UC" if "pubg" in call.data else "جوهرة"
         amount = call.data.split("_")[-1]
-        price_in_syr = round(PRICES.get(call.data, 0.0) * EXCHANGE_RATE)
-        user_orders[call.from_user.id] = {"game": game_type, "amount": f"{amount} {unit}", "price_syr": price_in_syr, "step": "get_id"}
+        price_in_syr = round(item_config["price_usd"] * EXCHANGE_RATE)
+        
+        user_orders[call.from_user.id] = {
+            "game": game_type, 
+            "amount": f"{amount} {unit}", 
+            "price_syr": price_in_syr, 
+            "api_id": item_config["api_id"],
+            "step": "get_id"
+        }
         bot.send_message(chat_id, f"🎮 الرجاء إدخال آيدي (ID) اللاعب الخاص بك لـ {game_type}:")
         bot.answer_callback_query(call.id)
     elif call.data == "admin_view_orders" and chat_id == ADMIN_ID:
@@ -121,39 +174,18 @@ def callback_query(call):
             data_parts = call.data.split("_")
             action = str(data_parts[0])
             target_user_id = str(data_parts[1])
+            
             if action == "accept":
-                bot.send_message(target_user_id, "✅ **تمت العملية بنجاح!**\n\nلقد تم التحقق من عملية الدفع وشحن حسابك بالألعاب بنجاح.")
-                bot.edit_message_text(f"{call.message.text}\n\n🟢 **حالة الطلب:** تم الشحن بنجاح ✅", chat_id, call.message.message_id)
-            elif action == "reject":
-                bot.send_message(target_user_id, "❌ **عذراً، تم رفض طلبك!**\n\nيرجى التأكد من رقم المعاملة أو التواصل مع الدعم.")
-                bot.edit_message_text(f"{call.message.text}\n\n🔴 **حالة الطلب:** تم الرفض ❌", chat_id, call.message.message_id)
-        bot.answer_callback_query(call.id)
-
-@bot.message_handler(func=lambda message: message.from_user.id in user_orders)
-def process_order_steps(message):
-    user_id = message.from_user.id
-    step = user_orders[user_id]["step"]
-    if step == "get_id":
-        user_orders[user_id]["player_id"] = message.text
-        user_orders[user_id]["step"] = "get_payment"
-        bot.send_message(message.chat.id, f"💰 **خطوة الدفع:**\n\n💵 القيمة: **{user_orders[user_id]['price_syr']} ليرة سورية جديدة**\n📌 أرسل المبلغ لحساب الشام كاش: `{SHAM_CASH_ACCOUNT}`\n\n⚠️ بعد التحويل، اكتب رقم المعاملة هنا نصاً:")
-    elif step == "get_payment":
-        user_orders[user_id]["transaction_id"] = message.text
-        order_info = user_orders[user_id]
-        bot.send_message(message.chat.id, f"✅ **تم استلام طلبك بنجاح!**\n\n🎮 اللعبة: {order_info['game']}\n📦 الفئة: {order_info['amount']}\n🆔 الآيدي: `{order_info['player_id']}`\n\n⏳ جاري المراجعة والتحقق...")
-        username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-        admin_notification = f"🚨 **طلب جديد!**\n\n👤 الزبون: {username} (ID: {user_id})\n🎮 اللعبة: {order_info['game']}\n📦 الكمية: {order_info['amount']}\n💰 المطلوب: {order_info['price_syr']} ل.س\n🆔 آيدي اللاعب: `{order_info['player_id']}`\n🧾 رقم المعاملة: `{order_info['transaction_id']}`"
-        admin_markup = types.InlineKeyboardMarkup(row_width=2)
-        admin_markup.add(
-            types.InlineKeyboardButton("🟢 شحن (صح)", callback_data=f"accept_{user_id}"),
-            types.InlineKeyboardButton("🔴 رفض (خطأ)", callback_data=f"reject_{user_id}")
-        )
-        bot.send_message(ADMIN_ID, admin_notification, reply_markup=admin_markup)
-        save_order_to_file(admin_notification)
-        del user_orders[user_id]
-
-if __name__ == "__main__":
-    # تشغيل السيرفر المساعد لتفادي إغلاق Render المجاني
-    keep_alive()
-    bot.infinity_polling()
-
+                lines = call.message.text.split("\n")
+                prod_id = None
+                player_id = None
+                
+                for line in lines:
+                    if "🆔" in line:
+                        player_id = line.split("`")[1].strip()
+                    if "🔢 معرف المنتج:" in line:
+                        prod_id = line.split(":")[-1].strip()
+                
+                bot.send_message(ADMIN_ID, "⏳ جاري إرسال الطلب تلقائياً إلى سيرفر نمر كارد...")
+                api_response = send_order_to_api(prod_id, player_id)
+                
