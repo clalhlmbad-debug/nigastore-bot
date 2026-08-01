@@ -21,11 +21,12 @@ bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
 # ==========================================
-# 2. مصفوفة قاعدة البيانات الوهمية (المحفظة والطلبات)
+# 2. قواعد البيانات الافتراضية لحفظ الحسابات مجاناً
 # ==========================================
-# لتجنب تصفير المحفظة عند النوم المجاني لـ Render، ينصح لاحقاً بربط SQLite أو MongoDB.
-db_users = {}   # الهيكل: {chat_id: {"balance": 0.0, "username": "", "orders": []}}
-user_steps = {}  # لمتابعة خطوات الإدخال والطلبات المؤقتة لكل مستخدم
+# ملاحظة: لحفظ البيانات بشكل دائم عند إعادة تشغيل سيرفر رندر المجاني يفضل ربطها بـ MongoDB لاحقاً
+user_wallets = {}  # لحفظ رصيد المستخدمين {chat_id: balance_syp}
+user_history = {}  # لحفظ أرشيف الطلبات {chat_id: [قائمة الطلبات]}
+all_users = set()  # لحفظ الـ IDs لجميع من ضغط start للإذاعة الجماعية
 
 PRICES = {
     # باقات ببجي موبايل
@@ -51,137 +52,154 @@ PRICES = {
     "itunes_25usd": {"name": "Itunes 25$ US GiftCard", "price_usd": 24.81, "nemer_id": 312}
 }
 
-# خادم الويب للاستضافة المجانية
-@app.route('/')
-def home(): return "Bot system is Online!"
-def run(): app.run(host='0.0.0.0', port=8080)
-def keep_alive(): Thread(target=run).start()
+user_orders = {}
 
-# دالة مساعدة لتسجيل المستخدمين الجدد
-def check_user(user):
-    if user.id not in db_users:
-        db_users[user.id] = {
-            "balance": 0, # الرصيد بالليرة السورية كاش
-            "username": user.username if user.username else "لا يوجد",
-            "orders": []
-        }
+@app.route('/')
+def home():
+    return "Bot is Live and Running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 # ==========================================
-# 3. واجهة القائمة الرئيسية (الكيبورد السفلي المطابق تماماً)
+# 3. القائمة الرئيسية (لوحة الكيبورد السفلي)
 # ==========================================
 @bot.message_handler(commands=['start'])
 def start_command(message):
-    check_user(message.from_user)
+    chat_id = message.chat.id
+    all_users.add(chat_id)
+    
+    # تهيئة المحفظة والأرشيف للمستخدم الجديد إن لم يكن مسجلاً
+    if chat_id not in user_wallets:
+        user_wallets[chat_id] = 0.0
+    if chat_id not in user_history:
+        user_history[chat_id] = []
+        
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     
-    markup.add(types.KeyboardButton("PUBG MOBILE ⚡"), types.KeyboardButton("FREE FIRE 🔥"))
-    markup.add(types.KeyboardButton("أكواد وبطاقات"), types.KeyboardButton("منتجات اخرى (تلقائي) 🎮"))
-    markup.add(types.KeyboardButton("المنتجات اليدوية 🛍️"), types.KeyboardButton("حسابي 👤"))
-    markup.add(types.KeyboardButton("طلباتي 📂"))
-    markup.add(types.KeyboardButton("الدعم 📞"), types.KeyboardButton("تعليمات هامة ℹ️"))
+    btn_pubg = types.KeyboardButton("PUBG MOBILE ⚡")
+    btn_ff = types.KeyboardButton("FREE FIRE 🔥")
+    btn_codes = types.KeyboardButton("أكواد وبطاقات")
+    btn_other = types.KeyboardButton("شحن رصيد المحفظة 💰")
+    btn_manual = types.KeyboardButton("المنتجات اليدوية 🛍️")
+    btn_my_account = types.KeyboardButton("حسابي 👤")
+    btn_my_orders = types.KeyboardButton("طلباتي 📂")
+    btn_support = types.KeyboardButton("الدعم 📞")
+    btn_info = types.KeyboardButton("تعليمات هامة ℹ️")
     
-    bot.send_message(message.chat.id, "👋 أهلاً بك في متجر الشحن الذكي الشامل!\nاستخدم الأزرار بالأسفل للتصفح والشحن الفوري:", reply_markup=markup)
-
-# ==========================================
-# 4. معالجة نقرات الكيبورد الرئيسي وقسم "حسابي" و "طلباتي"
-# ==========================================
-@bot.message_handler(func=lambda message: True)
-def handle_reply_keyboard(message):
-    chat_id = message.chat.id
-    check_user(message.from_user)
-    text = message.text
+    markup.add(btn_pubg, btn_ff)
+    markup.add(btn_codes, btn_other)
+    markup.add(btn_manual, btn_my_account)
+    markup.add(btn_my_orders)
+    markup.add(btn_support, btn_info)
     
-    if text == "PUBG MOBILE ⚡":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for k in ["pubg_60", "pubg_325", "pubg_660", "pubg_1800", "pubg_3850", "pubg_8100"]:
-            markup.add(types.InlineKeyboardButton(f"{PRICES[k]['name']} - ${PRICES[k]['price_usd']}", callback_data=f"buy_{k}"))
-        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu"))
-        bot.send_message(chat_id, "🎫 اختر الفئة المناسبة لببجي موبايل:", reply_markup=markup)
-        
-    elif text == "أكواد وبطاقات":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(types.InlineKeyboardButton("Itunes USA", callback_data="view_itunes_sub"))
-        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu"))
-        bot.send_message(chat_id, "🎫 أقسام الأكواد والبطاقات الرقمية المتوفرة:", reply_markup=markup)
-        
-    elif text == "حسابي 👤":
-        user_info = db_users[chat_id]
-        balance_usd = round(user_info["balance"] / EXCHANGE_RATE, 2)
-        profile_card = (
-            f"👤 **بطاقة بيانات الحساب الخاصة بك:**\n\n"
-            f"🆔 معرف الحساب التلغرام: `{chat_id}`\n"
-            f"🏷️ اسم المستخدم: @{user_info['username']}\n"
-            f"💰 رصيدك الكاش: **{user_info['balance']} ليرة سورية**\n"
-            f"💵 ما يعادل بالدولار: {balance_usd} $\n\n"
-            f"💡 يمكنك شحن وتعبئة محفظتك عبر الضغط على زر شحن الرصيد أدناه بالتحويل المباشر لشام كاش."
-        )
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("➕ شحن الرصيد الآن", callback_data="deposit_funds"))
-        bot.send_message(chat_id, profile_card, reply_markup=markup, parse_mode="Markdown")
-        
-    elif text == "طلباتي 📂":
-        orders = db_users[chat_id]["orders"]
-        if not orders:
-            bot.send_message(chat_id, "📂 سجل فواتيرك فارغ، لم تقم بإجراء عمليات شراء بعد.")
-            return
-        log_text = "🗂️ **سجل عمليات الشراء والطلبات السابقة الخاصة بك:**\n\n"
-        for idx, o in enumerate(orders[-7:], 1): # عرض آخر 7 طلبات للزبون
-            log_text += f"{idx}️⃣ المنتج: {o['prod']} | الآيدي: `{o['id']}`\n💰 السعر: {o['price']} ليرة | الحالة: {o['status']}\n\n"
-        bot.send_message(chat_id, log_text, parse_mode="Markdown")
-        
-    elif text == "الدعم 📞":
-        bot.send_message(chat_id, f"🛠️ لقسم المساعدة المباشرة والاستفسارات تواصل مع الإدارة عبر المعرف: {ADMIN_ID}")
-    elif text == "تعليمات هامة ℹ️":
-        bot.send_message(chat_id, "⚠️ **تنبيهات للمشترين:**\n1. شحن المحفظة أولاً يضمن لك شراء المنتجات فوراً وتلقائياً دون انتظار موافقة الآدمن يدوياً.")
+    bot.send_message(message.chat.id, "⬇️ مرحباً بك في متجرنا المتكامل والذكي ⬇️", reply_markup=markup)
 
 # ==========================================
-# 5. تفريع واجهات آيتونز وزر الرجوع
+# 4. معالجة القوائم الفرعية للألعاب والبطاقات
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data in ["view_itunes_sub", "back_to_menu"])
-def handle_navigation_callbacks(call):
-    chat_id = call.message.chat.id
-    if call.data == "view_itunes_sub":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        keys = ["itunes_2usd", "itunes_3usd", "itunes_4usd", "itunes_5usd", "itunes_6usd", "itunes_7usd", "itunes_8usd", "itunes_9usd", "itunes_10usd", "itunes_15usd", "itunes_20usd", "itunes_25usd"]
-        for k in keys:
-            markup.add(types.InlineKeyboardButton(f"{PRICES[k]['name']} - ${PRICES[k]['price_usd']}", callback_data=f"buy_{k}"))
-        bot.edit_message_text("🛍️ المنتجات والبطاقات المتاحة لشام كاش ونمر كارد:", chat_id, call.message.message_id, reply_markup=markup)
-    elif call.data == "back_to_menu":
-        bot.delete_message(chat_id, call.message.message_id)
+@bot.message_handler(func=lambda message: message.text == "PUBG MOBILE ⚡")
+def show_pubg_packages(message):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for key in ["pubg_60", "pubg_325", "pubg_660", "pubg_1800", "pubg_3850", "pubg_8100"]:
+        markup.add(types.InlineKeyboardButton(f"{PRICES[key]['name']} - ${PRICES[key]['price_usd']}", callback_data=f"buy_{key}"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu"))
+    bot.send_message(message.chat.id, "🎫 اختر الفئة المناسبة لببجي موبايل:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == "أكواد وبطاقات")
+def show_codes_and_cards(message):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton("Itunes USA 🍏", callback_data="view_itunes_sub")
+    btn_back = types.InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")
+    markup.add(btn1, btn_back)
+    bot.send_message(message.chat.id, "🎫 اختر فئة البطاقات المطلوبة:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "view_itunes_sub")
+def show_itunes_categories(call):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    keys = ["itunes_2usd", "itunes_3usd", "itunes_4usd", "itunes_5usd", "itunes_6usd", "itunes_7usd", "itunes_8usd", "itunes_9usd", "itunes_10usd", "itunes_15usd", "itunes_20usd", "itunes_25usd"]
+    for k in keys:
+        markup.add(types.InlineKeyboardButton(f"{PRICES[k]['name']} - ${PRICES[k]['price_usd']}", callback_data=f"buy_{k}"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع للخيارات", callback_data="back_to_cards_main"))
+    bot.edit_message_text("🛍️ المنتجات المتاحة لبطاقات آيتونز:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data in ["back_to_menu", "back_to_cards_main"])
+def back_actions(call):
+    bot.delete_message(call.message.chat.id, call.message.message_id)
 
 # ==========================================
-# 6. نظام شحن وتعبئة رصيد المحفظة (Deposit System)
+# 5. نظام الشراء والخصم الفوري من المحفظة الرصيدية
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data == "deposit_funds")
-def start_deposit(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
+def ask_for_id(call):
     chat_id = call.message.chat.id
+    product_key = call.data.replace("buy_", "")
+    
+    price_usd = PRICES[product_key]["price_usd"]
+    price_local = round(price_usd * EXCHANGE_RATE, 2)
+    
+    # التحقق من أن العميل يمتلك رصيداً كافياً في محفظته لشراء المنتج فوراً
+    user_balance = user_wallets.get(chat_id, 0.0)
+    if user_balance < price_local:
+        bot.send_message(chat_id, f"❌ رصيد محفظتك الحالي ({user_balance} ليرة) غير كافٍ لشراء هذا المنتج الذي قيمته ({price_local} ليرة).\nيرجى شحن رصيد محفظتك أولاً عبر زر 'شحن رصيد المحفظة 💰'.")
+        return
+        
+    user_orders[chat_id] = {"product": product_key, "price_local": price_local}
     bot.delete_message(chat_id, call.message.message_id)
-    msg = bot.send_message(chat_id, "💰 أرسل كمية الأموال المراد تعبئتها في محفظتك (بالليرة السورية كاش) مثال: `50000`:")
-    bot.register_next_step_handler(msg, ask_deposit_receipt)
+    
+    msg = bot.send_message(chat_id, f"🎯 لشراء {PRICES[product_key]['name']} بقيمة {price_local} ليرة سورية من محفظتك.\nمن فضلك، أرسل رقم الآيدي (ID) الخاص بك الآن:")
+    bot.register_next_step_handler(msg, process_wallet_purchase)
 
-def ask_deposit_receipt(message):
+def process_wallet_purchase(message):
+    chat_id = message.chat.id
+    game_id_entered = message.text
+    
+    if chat_id in user_orders:
+        info = user_orders[chat_id]
+        product_key = info["product"]
+        price_local = info["price_local"]
+        
+        # خصم المبلغ من المحفظة وحفظ الطلب بالأرشيف
+        user_wallets[chat_id] -= price_local
+        user_history[chat_id].append(f"شراء {PRICES[product_key]['name']} - بقيمة {price_local} ليرة [قيد المعالجة]")
+        
+        # إرسال الطلب فوراً للآدمن للموافقة والتسليم التلقائي عبر نمر كارد
+        admin_markup = types.InlineKeyboardMarkup(row_width=2)
+        btn_yes = types.InlineKeyboardButton("🟢 مقبول (تسليم نمر كارد)", callback_data=f"n_yes_{chat_id}_{product_key}_{game_id_entered}")
+        btn_no = types.InlineKeyboardButton("🔴 مرفوض وإعادة الرصيد", callback_data=f"n_no_{chat_id}_{price_local}_{product_key}")
+        admin_markup.add(btn_yes, btn_no)
+        
+        admin_text = (
+            f"🛒 **عملية شراء جديدة بالخصم من المحفظة!**\n\n"
+            f"👤 المشتري: (ID: {chat_id})\n"
+            f"📦 المنتج: {PRICES[product_key]['name']}\n"
+            f"🆔 الآيدي/البيانات: `{game_id_entered}`\n"
+            f"💰 القيمة المخصومة: {price_local} ليرة"
+        )
+        bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_markup, parse_mode="Markdown")
+        bot.send_message(chat_id, "⏳ تم خصم القيمة من محفظتك بنجاح، ورفع الطلب للإدارة للتدقيق والشحن التلقائي فوراً!")
+
+# ==========================================
+# 6. نظام شحن رصيد المحفظة عبر تحويل شام كاش
+# ==========================================
+@bot.message_handler(func=lambda message: message.text == "شحن رصيد المحفظة 💰")
+def deposit_money_request(message):
+    msg = bot.send_message(message.chat.id, "💰 أرسل القيمة المراد شحنها بمحفظتك بالليرة السورية (مثال: 50000):")
+    bot.register_next_step_handler(msg, process_deposit_step)
+
+def process_deposit_step(message):
     chat_id = message.chat.id
     try:
-        amount = int(message.text)
-        user_steps[chat_id] = {"deposit_amount": amount}
-        msg = bot.send_message(chat_id, f"📥 من فضلك، قم بتحويل القيمة المستحقة المذكورة وهي **{amount} ليرة** لحساب شام كاش التالي: `{SHAM_CASH_ACCOUNT}`\n\nثم أرسل **رقم عملية الحوالة النصي أو صورة الإيصال** هنا لتأكيدها:")
-        bot.register_next_step_handler(msg, send_deposit_to_admin)
-    except:
-        bot.send_message(chat_id, "❌ قيمة رقمية خاطئة، يرجى إعادة المحاولة والضغط على زر شحن الرصيد مجدداً.")
-
-def send_deposit_to_admin(message):
-    chat_id = message.chat.id
-    receipt_data = message.text if message.text else "تم إرسال صورة إيصال بالتحويل المالي"
-    amount = user_steps[chat_id]["deposit_amount"]
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🟢 قبول الإيداع وإضافة الرصيد", callback_data=f"dep_yes_{chat_id}_{amount}"))
-    markup.add(types.InlineKeyboardButton("🔴 رفض وثيقة التحويل", callback_data=f"dep_no_{chat_id}"))
-    
-    bot.send_message(ADMIN_ID, f"🔔 **إشعار طلب شحن محفظة جديد!**\n\n👤 المستخدم: (ID: {chat_id})\n💰 المبلغ المذكور: {amount} ليرة سورية\n📄 تفاصيل الإيصال: {receipt_data}", reply_markup=markup)
-    bot.send_message(chat_id, "⏳ تم تسليم وثيقة شحن رصيد المحفظة بنجاح، جاري مطابقة كشف الحساب من قبل الآدمن وتأكيد رصيدك السحابي...")
-
-# معالجة قرار الأدمن للإيداع المالي
-@bot.callback_query_handler(func=lambda call: call.data.startswith("dep_"))
-def process_admin_deposit(call):
-    parts = call.data.split("_")
+        amount = float(message.text)
+        markup = types.InlineKeyboardMarkup()
+        btn = types.InlineKeyboardButton("✅ قمت بالتحويل، أرسل للآدمن للموافقة", callback_data=f"dep_{chat_id}_{amount}")
+        markup.add(btn)
+        
+        invoice = (
+            f"💳 **طلب شحن رصيد المحفظة:**\n\n"
+            f"💰 القيمة المحددة: {amount} ليرة سورية\n"
+            f"📥 يرجى تحويل المبلغ إلى حساب شام كاش المعتمد التالي: `{SHAM_CASH_ACCOUNT}`\n\n"
