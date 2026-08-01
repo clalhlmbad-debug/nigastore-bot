@@ -1,35 +1,36 @@
 import os
+import uuid  # لتوليد معرف فريد لكل طلب كما تطلب وثائق نمر كارد
 import telebot
 from telebot import types
 from flask import Flask
 from threading import Thread
-import requests  # ستحتاج للتأكد من وجود هذه المكتبة في ملف requirements.txt الخاص بك
+import requests
 
 # ==========================================
-# 1. الإعدادات الأساسية للبوت (مأخوذة من كودك)
+# 1. الإعدادات الأساسية (تأكد من توكن BotFather الجديد)
 # ==========================================
-TOKEN = "8826744317:AAFho5aCppPS1we_4kkp4Rz1SX6fh32K-Y8"
+TOKEN = "8826744317:AAFho5aCppPS1we_4kkp4Rz1SX6fh32K-Y8" 
 ADMIN_ID = 8192730669
 SHAM_CASH_ACCOUNT = "df910e11786027a6bfcae8b9b06b5384"
 EXCHANGE_RATE = 145
 
+# إعدادات نمر كارد بناءً على الوثائق الرسمية
+NEMER_API_TOKEN = "ضع_api_token_الخاص_بك_من_نمر_كارد"
+BASE_URL = "https://nemer-card.com" # قم بتعديله إذا كان الرابط الأساسي لمتجرهم مختلفاً
+
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
-# ==========================================
-# 2. مصفوفة الأسعار والمنتجات (الأسعار بالدولار)
-# ==========================================
+# مصفوفة الأسعار بناءً على الـ IDs المعتمدة في حسابك بنمر كارد
+# قمت بوضع المعرفات 365 و 18 كأمثلة مأخوذة من الوثائق الخاصة بك
 PRICES = {
-    "pubg_60": 0.92,
-    "pubg_325": 4.59,
-    "freefire_100": 0.85,
-    "insta_1k": 1.20,
-    "netflix_1m": 3.50
+    "pubg_60": {"price_usd": 0.92, "nemer_id": 365},
+    "pubg_325": {"price_usd": 4.59, "nemer_id": 18}
 }
 
-# ==========================================
-# 3. إعداد نظام Flask لإبقاء البوت مستيقظاً 24 ساعة
-# ==========================================
+user_orders = {}
+
+# سيرفر الويب لإبقاء البوت مستيقظاً 24 ساعة على Render مجاناً
 @app.route('/')
 def home():
     return "Bot is Live and Running!"
@@ -42,146 +43,160 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# 4. الأوامر والقوائم التفاعلية للمستخدمين
+# 2. القائمة الرئيسية وقسم الألعاب
 # ==========================================
-
 @bot.message_handler(commands=['start'])
 def start_command(message):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    
-    btn_games = types.InlineKeyboardButton("🎮 شحن ألعاب", callback_data="cat_games")
-    btn_apps = types.InlineKeyboardButton("📱 برامج وبطاقات", callback_data="cat_apps")
-    btn_support = types.InlineKeyboardButton("📞 الدعم الفني", callback_data="cat_support")
-    
-    markup.add(btn_games, btn_apps)
-    markup.add(btn_support)
-    
-    welcome_text = (
-        "👋 أهلاً بك في بوت الشحن المتكامل السريع!\n\n"
-        "الرجاء اختيار القسم الذي ترغب في تصفحه من الأزرار أدناه:"
-    )
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn_games = types.InlineKeyboardButton("🎮 قسم شحن ببجي موبايل", callback_data="cat_games")
+    markup.add(btn_games)
+    bot.send_message(message.chat.id, "👋 أهلاً بك في بوت الشحن السريع المتكامل!\nاضغط على الزر أدناه لبدء الطلب:", reply_markup=markup)
 
-# التنقل بين الأقسام الرئيسية
-@bot.callback_query_handler(func=lambda call: call.data.startswith("cat_"))
-def handle_categories(call):
+@bot.callback_query_handler(func=lambda call: call.data == "cat_games")
+def show_games(call):
     chat_id = call.message.chat.id
     message_id = call.message.message_id
+    markup = types.InlineKeyboardMarkup(row_width=1)
     
-    if call.data == "cat_games":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        btn1 = types.InlineKeyboardButton(f"🔫 ببجي 60 شدة - {PRICES['pubg_60']} $", callback_data="buy_pubg_60")
-        btn2 = types.InlineKeyboardButton(f"🔫 ببجي 325 شدة - {PRICES['pubg_325']} $", callback_data="buy_pubg_325")
-        btn3 = types.InlineKeyboardButton(f"🔥 فري فاير 100 جوهرة - {PRICES['freefire_100']} $", callback_data="buy_freefire_100")
-        btn_home = types.InlineKeyboardButton("🔙 العودة للرئيسية", callback_data="return_home")
-        markup.add(btn1, btn2, btn3, btn_home)
-        
-        bot.edit_message_text("🎮 قسم شحن الألعاب:\nاختر الباقة المناسبة لك لشحنها تلقائياً:", chat_id, message_id, reply_markup=markup)
-        
-    elif call.data == "cat_apps":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        btn1 = types.InlineKeyboardButton(f"🎵 نتفليكس شهر - {PRICES['netflix_1m']} $", callback_data="buy_netflix_1m")
-        btn_home = types.InlineKeyboardButton("🔙 العودة للرئيسية", callback_data="return_home")
-        markup.add(btn1, btn_home)
-        
-        bot.edit_message_text("📱 قسم البرامج والاشتراكات:\nاختر الباقة المطلوبة للتفعيل:", chat_id, message_id, reply_markup=markup)
-        
-    elif call.data == "cat_support":
-        markup = types.InlineKeyboardMarkup()
-        btn_home = types.InlineKeyboardButton("🔙 العودة للرئيسية", callback_data="return_home")
-        markup.add(btn_home)
-        bot.edit_message_text(f"📞 للدعم الفني والاستفسارات المباشرة:\n\nتواصل مع الإدارة عبر حساب المطوّر.\nمعرف الآدمين: {ADMIN_ID}", chat_id, message_id, reply_markup=markup)
+    btn1 = types.InlineKeyboardButton(f"🔫 ببجي 60 شدة - {PRICES['pubg_60']['price_usd']} $", callback_data="buy_pubg_60")
+    btn2 = types.InlineKeyboardButton(f"🔫 ببجي 325 شدة - {PRICES['pubg_325']['price_usd']} $", callback_data="buy_pubg_325")
+    markup.add(btn1, btn2)
+    bot.edit_message_text("🎮 اختر كمية الشدات المُراد شحنها لك:", chat_id, message_id, reply_markup=markup)
 
 # ==========================================
-# 5. نظام الفواتير وحساب الأسعار تلقائياً بناءً على مصفوفتك
+# 3. خطوة طلب الآيدي (ID) من الزبون
 # ==========================================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
-def handle_purchase(call):
+def ask_for_id(call):
     chat_id = call.message.chat.id
-    message_id = call.message.message_id
-    
     product_key = call.data.replace("buy_", "")
+    user_orders[chat_id] = {"product": product_key}
     
-    if product_key in PRICES:
-        price_usd = PRICES[product_key]
-        # العملية الحسابية تلقائياً بناءً على مصفوفة الأسعار وسعر الصرف الخاص بك
+    bot.delete_message(chat_id, call.message.message_id)
+    msg = bot.send_message(chat_id, "🎯 من فضلك، أرسل رقم الآيدي (ID) الخاص بحسابك في اللعبة الآن:")
+    bot.register_next_step_handler(msg, process_payment_screen)
+
+# ==========================================
+# 4. حساب الفاتورة وتفاصيل تحويل شام كاش
+# ==========================================
+def process_payment_screen(message):
+    chat_id = message.chat.id
+    game_id_entered = message.text
+    
+    if chat_id in user_orders:
+        user_orders[chat_id]["game_id"] = game_id_entered
+        product_key = user_orders[chat_id]["product"]
+        
+        price_usd = PRICES[product_key]["price_usd"]
         price_local = round(price_usd * EXCHANGE_RATE, 2)
+        user_orders[chat_id]["price_local"] = price_local
         
         markup = types.InlineKeyboardMarkup()
-        btn_pay = types.InlineKeyboardButton("💳 دفع تلقائي (شام كاش)", callback_data=f"pay_sham_{product_key}_{price_local}")
-        btn_back = types.InlineKeyboardButton("🔙 إلغاء والعودة", callback_data="return_home")
-        markup.add(btn_pay, btn_back)
+        btn_confirm = types.InlineKeyboardButton("✅ قمت بالتحويل، إرسال الطلب للمراجعة", callback_data="submit_order_to_admin")
+        markup.add(btn_confirm)
         
-        invoice_text = (
-            f"🛒 **تفاصيل الفاتورة المستخرجة:**\n\n"
-            f"📦 المنتج المطلوب: {product_key.upper().replace('_', ' ')}\n"
-            f"💵 السعر الأصلي: {price_usd} $\n"
-            f"💰 القيمة بالعملة المحلية: {price_local} ليرة\n"
-            f"📈 سعر الصرف المعتمد: {EXCHANGE_RATE}\n\n"
-            f"اضغط على زر الدفع أدناه لإرسال الأموال وتأكيد العملية تلقائياً مالياً."
+        invoice_message = (
+            f"🛒 **فاتورة الشراء المستخرجة بنجاح:**\n\n"
+            f"📦 نوع الباقة: {product_key.upper().replace('_', ' ')}\n"
+            f"🆔 آيدي حسابك: `{game_id_entered}`\n"
+            f"💰 القيمة المطلوبة: **{price_local} ليرة سورية**\n\n"
+            f"📌 **خطوات تحويل الأموال:**\n"
+            f"الرجاء تحويل المبلغ الدقيق أعلاه إلى حساب شام كاش المعتمد التالي:\n"
+            f"📥 الحساب: `{SHAM_CASH_ACCOUNT}`\n\n"
+            f"⚠️ بعد إتمام إرسال الأموال، اضغط على الزر أدناه لتأكيد طلبك للآدمن."
         )
-        bot.edit_message_text(invoice_text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(chat_id, invoice_message, reply_markup=markup, parse_mode="Markdown")
 
 # ==========================================
-# 6. قسم معالجة الدفع التلقائي عبر بوابة شام كاش (Sham Cash)
+# 5. ترحيل الطلب للآدمن (مقبول / مرفوض)
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data.startswith("pay_sham_"))
-def process_sham_payment(call):
+@bot.callback_query_handler(func=lambda call: call.data == "submit_order_to_admin")
+def submit_to_admin(call):
     chat_id = call.message.chat.id
-    message_id = call.message.message_id
     
-    # تفكيك البيانات: pay_sham_[اسم_المنتج]_[السعر_المحلي]
-    data_parts = call.data.split("_")
-    product_name = f"{data_parts[2]}_{data_parts[3]}"
-    amount_to_pay = data_parts[4]
-    
-    # إعداد واجهة برمجية لطلب الدفع من سيرفر شام كاش
-    # ملاحظة: قم بتعديل هذا الرابط بناءً على الـ API الممنوح لك من دعم شام كاش الرسمي
-    sham_api_url = "https://shamcash.com" 
-    
-    payload = {
-        "account_secret": SHAM_CASH_ACCOUNT,
-        "amount": amount_to_pay,
-        "currency": "SYP",
-        "order_id": f"USER_{chat_id}_{product_name}",
-        "callback_url": f"https://onrender.com" # استبدل برابط سيرفرك الخاص على رندر لاحقاً ليتلقى تأكيد الدفع
-    }
-    
-    try:
-        # إرسال الطلب البرمجي لشام كاش لتوليد رابط الدفع للزبون
-        # ريثما تضع إعدادات السيرفر المباشرة، البوت سيعطي المستخدم التعليمات الفورية للتواصل:
-        markup = types.InlineKeyboardMarkup()
-        btn_home = types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="return_home")
-        markup.add(btn_home)
+    if chat_id in user_orders:
+        info = user_orders[chat_id]
         
-        success_text = (
-            f"🚀 **طلب الدفع جاهز!**\n\n"
-            f"يرجى تحويل القيمة المستحقة: **{amount_to_pay} ليرة**\n"
-            f"إلى حساب شام كاش السري المربوط بالمنصة.\n\n"
-            f"عند إتمام عملية تحويلك بنجاح، يرجى إرسال رقم الإيصال أو الصورة إلى الإدارة لتنفيذ الشحن السريع لحسابك."
+        admin_markup = types.InlineKeyboardMarkup(row_width=2)
+        btn_yes = types.InlineKeyboardButton("🟢 مقبول (شحن تلقائي نمر كارد)", callback_data=f"n_yes_{chat_id}_{info['product']}_{info['game_id']}")
+        btn_no = types.InlineKeyboardButton("🔴 مرفوض", callback_data=f"n_no_{chat_id}")
+        admin_markup.add(btn_yes, btn_no)
+        
+        admin_alert_text = (
+            f"📩 **طلب شحن شدات جديد قيد المراجعة!**\n\n"
+            f"👤 المشتري: @{call.from_user.username} (ID: {chat_id})\n"
+            f"📦 الباقة: {info['product'].upper()}\n"
+            f"🆔 آيدي اللاعب: `{info['game_id']}`\n"
+            f"💰 القيمة بـ شام كاش: {info['price_local']} ليرة"
         )
-        bot.edit_message_text(success_text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(ADMIN_ID, admin_alert_text, reply_markup=admin_markup, parse_mode="Markdown")
+        bot.edit_message_text("⏳ تم إرسال معلومات طلبك والآيدي بنجاح لمراجعة الإدارة وتدقيق الحساب المالي...", chat_id, call.message.message_id)
+
+# ==========================================
+# 6. تنفيذ الشحن الفوري عبر API نمر كارد عند ضغط القبول
+# ==========================================
+@bot.callback_query_handler(func=lambda call: call.data.startswith("n_"))
+def handle_nimer_card_shipping(call):
+    data_split = call.data.split("_")
+    action = data_split
+    customer_chat_id = int(data_split)
+    
+    if action == "yes":
+        product_key = f"{data_split}_{data_split}"
+        player_game_id = data_split
         
-    except Exception as e:
-        bot.send_message(chat_id, "❌ عذراً، هناك مشكلة مؤقتة في الاتصال ببوابة الدفع. يرجى المحاولة لاحقاً أو الاتصال بالدعم الفني.")
+        # جلب الـ ID الخاص بالمنتج من مصفوفة الأسعار
+        product_id = PRICES[product_key]["nemer_id"]
+        # توليد UUIDv4 فريد تطلبه الوثائق لتجنب تكرار الطلب
+        order_uuid = str(uuid.uuid4()) 
+        
+        # تجهيز رابط نمر كارد حسب التوثيق الرسمي المرسل
+        # الرابط: /client/api/newOrder/{product_id}/params
+        api_url = f"{BASE_URL}/client/api/newOrder/{product_id}/params"
+        
+        # رأس المصادقة المطلوبة (api-token)
+        headers = {
+            "api-token": NEMER_API_TOKEN,
+            "Content-Type": "application/json"
+        }
+        
+        # البيانات المرسلة بجسم الطلب (POST) حسب الوثائق
+        payload = {
+            "qty": 1,
+            "playerId": player_game_id,
+            "order_uuid": order_uuid
+        }
+        
+        try:
+            # إرسال الطلب البرمجي الفوري لخادم نمر كارد
+            response = requests.post(api_url, headers=headers, json=payload, timeout=12)
+            res_data = response.json()
+            
+            # التحقق من استجابة نمر كارد الناجحة ("status": "OK") والقبول ("accept")
+            if response.status_code == 200 and res_data.get("status") == "OK":
+                order_status = res_data.get("data", {}).get("status")
+                
+                if order_status == "accept":
+                    bot.send_message(customer_chat_id, f"🥳 **تهانينا! تم تأكيد الدفع وشحن الـ ({product_key.upper().replace('_', ' ')}) تلقائياً لحسابك بنجاح عبر نمر كارد!**")
+                    bot.edit_message_text(call.message.text + "\n\n✅ **حالة الطلب: تم القبول والشحن التلقائي عبر نمر كارد.**", ADMIN_ID, call.message.message_id)
+                elif order_status == "wait":
+                    bot.send_message(customer_chat_id, "⏳ تم قبول طلبك، وهو الآن في قائمة الانتظار لدى نمر كارد وسيصلك الشحن فوراً.")
+                    bot.edit_message_text(call.message.text + "\n\n⏳ **حالة الطلب: في الانتظار (Wait) على نمر كارد.**", ADMIN_ID, call.message.message_id)
+                else:
+                    bot.send_message(ADMIN_ID, "⚠️ تم رفض الطلب من قِبل سيرفر نمر كارد، يرجى الشحن يدوياً.")
+                    bot.send_message(customer_chat_id, "⏳ نعتذر، هناك تحديث مؤقت في نظام الشحن، جاري تسليم طلبك يدوياً بواسطة الإدارة خلال دقائق.")
+            else:
+                bot.send_message(ADMIN_ID, f"❌ فشل الاتصال بنمر كارد. كود الخطأ: {response.status_code}")
+                bot.send_message(customer_chat_id, "⏳ تم تأكيد دفعتك، وجاري تسليم الشدات لحسابك يدوياً الآن.")
+                
+        except Exception as e:
+            bot.send_message(ADMIN_ID, f"❌ حدث خطأ برمي أثناء الاتصال بنمر كارد: {e}")
+            bot.send_message(customer_chat_id, "⏳ تم استلام الدفع، وجاري الشحن يدوياً فوراً.")
+            
+    elif action == "no":
+        bot.send_message(customer_chat_id, "❌ **نعتذر منك، تم رفض طلبك من قبل الإدارة لعدم مطابقة بيانات تحويل شام كاش.**")
+        bot.edit_message_text(call.message.text + "\n\n❌ **حالة الطلب: تم الرفض والإلغاء من قبل الآدمن.**", ADMIN_ID, call.message.message_id)
 
-# العودة للقائمة الرئيسية
-@bot.callback_query_handler(func=lambda call: call.data == "return_home")
-def return_home(call):
-    chat_id = call.message.chat.id
-    message_id = call.message.message_id
-    
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    btn_games = types.InlineKeyboardButton("🎮 شحن ألعاب", callback_data="cat_games")
-    btn_apps = types.InlineKeyboardButton("📱 برامج وبطاقات", callback_data="cat_apps")
-    markup.add(btn_games, btn_apps)
-    
-    bot.edit_message_text("👋 الرجاء اختيار القسم الذي ترغب في تصفحه من الأزرار أدناه:", chat_id, message_id, reply_markup=markup)
-
-# ==========================================
-# 7. تشغيل السيرفر المزدوج للبوت
-# ==========================================
 if __name__ == '__main__':
-    keep_alive() # تشغيل خادم الويب لمواجهة إغلاق الاستضافات المجانية في الخلفية تلقائياً
-    print("البوت الاحترافي المتكامل يعمل الآن بنجاح...")
+    keep_alive()
     bot.infinity_polling()
