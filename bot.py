@@ -1,15 +1,16 @@
 import telebot
 from telebot import types
 import os
+import sqlite3
 from flask import Flask
 from threading import Thread
 
-# --- إعدادات سيرفر وهمي للحفاظ على مجانية الـ Render ---
+# --- إعدادات سيرفر الحفاظ على مجانية الـ Render ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is Live and Running!"
+    return "Bot is Live and Running with SQLite Photo DB!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -18,177 +19,198 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# --- إعدادات البوت الأساسية (قم بتعديلها) ---
-# ⚠️ ضع توكن البوت الخاص بك المستخرج من BotFather بين الفواصل
-BOT_TOKEN = "8826744317:AAEY8S9xK4B4dXA3-kN2J6JyBF3ng701Ipg" 
-
-# ⚠️ ضع الآيدي (ID) المكون من أرقام لحسابك الشخصي لكي تصلك طلبات الشحن والإيصالات عليه
-ADMIN_ID = 8192730669 # استبدل هذا الرقم بآيدي حسابك الحقيقي
-
-# عنوان محفظة شام كاش الخاصة بك التي زودتني بها
+# --- إعدادات البوت الأساسية المتكاملة ---
+BOT_TOKEN = '8826744317:AAEY8S9xK4B4dXA3-kN2J6JyBF3ng701Ipg'
+ADMIN_ID = 8192730669
 SHAM_CASH_WALLET = "df910e178e027a6bfcae8b99b06b5384"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# تخزين مؤقت لحالات المستخدمين والطلبات
-user_data = {}
-orders = {}
+# تخزين مؤقت لجلسات المستخدمين الحالية (أثناء التصفح)
+user_sessions = {}
 
-# قائمة الباقات والأسعار (يمكنك تعديل الأسعار والكميات من هنا بسهولة)
-PRICES = {
-    'pubg': {
-        'b1': {'name': '60 شدة (UC)', 'price': '15,000 ل.س'},
-        'b2': {'name': '325 شدة (UC)', 'price': '65,000 ل.س'},
-        'b3': {'name': '660 شدة (UC)', 'price': '125,000 ل.س'}
-    },
-    'freefire': {
-        'f1': {'name': '100 جوهرة', 'price': '12,000 ل.س'},
-        'f2': {'name': '210 جوهرة', 'price': '24,000 ل.س'},
-        'f3': {'name': '530 جوهرة', 'price': '55,000 ل.س'}
-    }
+# --- إعداد وإنشاء قاعدة البيانات لحفظ الطلبات بصورها ---
+def init_db():
+    conn = sqlite3.connect('orders.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id TEXT PRIMARY KEY,
+            user_id INTEGER,
+            package_name TEXT,
+            player_id TEXT,
+            photo_id TEXT,
+            status TEXT DEFAULT 'PENDING'
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# تشغيل دالة إنشاء قاعدة البيانات فوراً
+init_db()
+
+# قائمة الباقات الاحترافية المنسقة
+PACKAGES = {
+    'pubg_b1': {'game': '🎮 ببجي موبايل', 'name': '60 شدة (UC)', 'price': '15,000 ل.س'},
+    'pubg_b2': {'game': '🎮 ببجي موبايل', 'name': '325 شدة (UC)', 'price': '65,000 ل.س'},
+    'pubg_b3': {'game': '🎮 ببجي موبايل', 'name': '660 شدة (UC)', 'price': '125,000 ل.س'},
+    'ff_f1': {'game': '💎 فري فاير', 'name': '100 جوهرة', 'price': '12,000 ل.س'},
+    'ff_f2': {'game': '💎 فري فاير', 'name': '210 جوهرة', 'price': '24,000 ل.س'},
+    'ff_f3': {'game': '💎 فري فاير', 'name': '530 جوهرة', 'price': '55,000 ل.س'}
 }
 
-# أمر البداية /start
+# رسالة الترحيب الرئيسية /start
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    user_id = message.chat.id
-    user_data[user_id] = {}
+    uid = message.chat.id
+    user_sessions[uid] = {} 
     
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    btn_pubg = types.InlineKeyboardButton("🎮 شحن ببجي (PUBG UC)", callback_data="game_pubg")
-    btn_ff = types.InlineKeyboardButton("💎 فري فاير (Free Fire)", callback_data="game_freefire")
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn_pubg = types.InlineKeyboardButton("🎮 شحن شدات ببجي (PUBG UC)", callback_data="show_pubg")
+    btn_ff = types.InlineKeyboardButton("🔥 شحن جواهر فري فاير (Free Fire)", callback_data="show_freefire")
     markup.add(btn_pubg, btn_ff)
     
-    welcome_text = "👋 أهلاً بك في بوت شحن الألعاب المعتمد!\n\nيرجى اختيار اللعبة التي ترغب في شحنها من الأزرار أدناه:"
-    bot.send_message(user_id, welcome_text, reply_markup=markup)
-
-# معالجة الضغط على الأزرار
-@bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call):
-    user_id = call.message.chat.id
-    
-    # اختيار اللعبة
-    if call.data.startswith("game_"):
-        game = call.data.split("_")[1]
-        user_data[user_id]['game'] = game
-        
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for key, package in PRICES[game].items():
-            btn = types.InlineKeyboardButton(f"{package['name']} - بسعر {package['price']}", callback_data=f"pkg_{key}")
-            markup.add(btn)
-        
-        btn_back = types.InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="main_menu")
-        markup.add(btn_back)
-        
-        bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id, 
-                              text="📦 يرجى اختيار الباقة المناسبة لك:", reply_markup=markup)
-        
-    # العودة للقائمة الرئيسية
-    elif call.data == "main_menu":
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        btn_pubg = types.InlineKeyboardButton("🎮 شحن ببجي (PUBG UC)", callback_data="game_pubg")
-        btn_ff = types.InlineKeyboardButton("💎 فري فاير (Free Fire)", callback_data="game_freefire")
-        markup.add(btn_pubg, btn_ff)
-        bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id, 
-                              text="يرجى اختيار اللعبة التي ترغب في شحنها من الأزرار أدناه:", reply_markup=markup)
-
-    # اختيار الباقة
-    elif call.data.startswith("pkg_"):
-        pkg_key = call.data.split("_")[1]
-        game = user_data[user_id].get('game')
-        
-        if not game:
-            bot.send_message(user_id, "⚠️ حدوث خطأ، يرجى إعادة تشغيل البوت عبر أمر /start")
-            return
-            
-        user_data[user_id]['package'] = PRICES[game][pkg_key]['name']
-        user_data[user_id]['price'] = PRICES[game][pkg_key]['price']
-        
-        # الانتقال لطلب المعرف ID
-        msg = bot.send_message(user_id, "🆔 من فضلك، قم بكتابة معرف اللاعب الخاص بك (Player ID) في اللعبة:")
-        bot.register_next_step_handler(msg, get_player_id)
-
-    # لوحة تحكم الإدارة (قبول / رفض الطلب)
-    elif call.data.startswith("admin_"):
-        action, order_id = call.data.split("_")[1], call.data.split("_")[2]
-        order = orders.get(order_id)
-        
-        if order:
-            customer_id = order['user_id']
-            if action == "approve":
-                bot.send_message(customer_id, f"✅ **تهانينا!** تم تأكيد دفعتك بنجاح وشحن باقة **({order['package']})** لحسابك بنجاح. شكراً لثقتك بنا!")
-                bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, 
-                                      text=f"🟢 تم [قبول وشحن] طلب العميل بنجاح.\nاللاعب: {order['player_id']}")
-            elif action == "reject":
-                bot.send_message(customer_id, "❌ **نعتذر منك!** تم رفض طلب الشحن الخاص بك نظراً لعدم صحة بيانات التحويل أو نقصها. يرجى التواصل مع الدعم الفني.")
-                bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, 
-                                      text=f"🔴 تم [رفض] طلب العميل.\nاللاعب: {order['player_id']}")
-            # تنظيف الذاكرة للطلب المستهلك
-            orders.pop(order_id, None)
-
-# استلام رقم الآيدي والاسم
-def get_player_id(message):
-    user_id = message.chat.id
-    player_id = message.text
-    user_data[user_id]['player_id'] = player_id
-    
-    # رسالة الدفع عبر شام كاش
-    payment_text = (
-        f"💳 **تفاصيل الدفع الفوري:**\n\n"
-        f"الرجاء تحويل مبلغ **{user_data[user_id]['price']}** إلى حسابنا في **شام كاش** التالي:\n\n"
-        f"`{SHAM_CASH_WALLET}`\n\n"
-        f"💡 *(اضغط على العنوان أعلاه لنسخه تلقائياً)*\n\n"
-        f"📸 بعد إتمام عملية التحويل بنجاح، يرجى إرسال **صورة إيصال التحويل** أو لقطة شاشة للعملية هنا في الشات لإتمام الشحن الفوري مجاناً:"
+    welcome_text = (
+        "⚡ **أهلاً بك في متجر شحن الألعاب الفوري المعتمد!** ⚡\n\n"
+        "تقدم لك منصتنا أسرع خدمة شحن شدات وجواهر بأسعار منافسة وطرق دفع آمنة.\n\n"
+        "👇 **من فضلك اختر اللعبة التي ترغب في شحنها الآن:**"
     )
-    msg = bot.send_message(user_id, payment_text, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, get_payment_proof)
+    bot.send_message(uid, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
-# استلام إيصال التحويل وإرساله للأدمن
-def get_payment_proof(message):
-    user_id = message.chat.id
+# معالجة ضغطات الأزرار واختيار الباقات
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    uid = call.message.chat.id
     
-    # التأكد من إرسال صورة أو نص كإيصال
-    if message.content_type in ['photo', 'text']:
-        order_id = str(user_id) + "_" + str(message.message_id)
+    # عرض باقات ببجي
+    if call.data == "show_pubg":
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for key, pkg in PACKAGES.items():
+            if key.startswith('pubg_'):
+                markup.add(types.InlineKeyboardButton(f"📦 {pkg['name']} ← السعر: {pkg['price']}", callback_data=f"select_{key}"))
+        markup.add(types.InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="go_home"))
         
-        orders[order_id] = {
-            'user_id': user_id,
-            'game': user_data[user_id].get('game'),
-            'package': user_data[user_id].get('package'),
-            'price': user_data[user_id].get('price'),
-            'player_id': user_data[user_id].get('player_id')
-        }
+        bot.edit_message_text(chat_id=uid, message_id=call.message.message_id, 
+                              text="🛒 **باقات شدات ببجي موبايل المتوفرة حالياً:**\nاختر الباقة المناسبة لبدء الشحن:", parse_mode="Markdown", reply_markup=markup)
         
-        # إنشاء أزرار التحكم للأدمن
-        admin_markup = types.InlineKeyboardMarkup(row_width=2)
-        btn_app = types.InlineKeyboardButton("✅ قبول وشحن", callback_data=f"admin_approve_{order_id}")
-        btn_rej = types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"admin_reject_{order_id}")
-        admin_markup.add(btn_app, btn_rej)
+    # عرض باقات فري فاير
+    elif call.data == "show_freefire":
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for key, pkg in PACKAGES.items():
+            if key.startswith('ff_'):
+                markup.add(types.InlineKeyboardButton(f"📦 {pkg['name']} ← السعر: {pkg['price']}", callback_data=f"select_{key}"))
+        markup.add(types.InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="go_home"))
         
-        admin_info = (
-            f"🔔 **طلب شحن جديد وارد!**\n\n"
-            f"🎮 اللعبة: {orders[order_id]['game'].upper()}\n"
-            f"📦 الباقة: {orders[order_id]['package']}\n"
-            f"💰 السعر المطلوب: {orders[order_id]['price']}\n"
-            f"🆔 آيدي اللاعب (ID): `{orders[order_id]['player_id']}`\n"
-            f"👤 حساب المشتري: {message.from_user.first_name} (@{message.from_user.username})"
-        )
-        
-        # إرسال البيانات للأدمن مع الإيصال ليتأكد يدوياً
-        if message.content_type == 'photo':
-            photo_id = message.photo[-1].file_id
-            bot.send_photo(ADMIN_ID, photo_id, caption=admin_info, parse_mode="Markdown", reply_markup=admin_markup)
-        else:
-            admin_info += f"\n\n📝 رقم العملية المرسل: {message.text}"
-            bot.send_message(ADMIN_ID, admin_info, parse_mode="Markdown", reply_markup=admin_markup)
-            
-        bot.send_message(user_id, "⏳ **تم استلام طلبك بنجاح وجاري مراجعته من قبل الإدارة.**\nسيصلك إشعار فوري هنا عند تأكيد عملية الشحن!")
-    else:
-        msg = bot.send_message(user_id, "⚠️ يرجى إرسال صورة إيصال صحيحة أو لقطة شاشة للعملية:")
-        bot.register_next_step_handler(msg, get_payment_proof)
+        bot.edit_message_text(chat_id=uid, message_id=call.message.message_id, 
+                              text="🛒 **باقات جواهر فري فاير المتوفرة حالياً:**\nاختر الباقة المناسبة لبدء الشحن:", parse_mode="Markdown", reply_markup=markup)
 
-# تشغيل السيرفر والبوت
-if __name__ == '__main__':
-    keep_alive() # تشغيل الفلاسك لـ Render
-    print("Bot is starting...")
-    bot.infinity_polling()
+    # العودة للقائمة الرئيسية
+    elif call.data == "go_home":
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        btn_pubg = types.InlineKeyboardButton("🎮 شحن شدات ببجي (PUBG UC)", callback_data="show_pubg")
+        btn_ff = types.InlineKeyboardButton("🔥 شحن جواهر فري فاير (Free Fire)", callback_data="show_freefire")
+        markup.add(btn_pubg, btn_ff)
+        bot.edit_message_text(chat_id=uid, message_id=call.message.message_id, 
+                              text="⚡ **من فضلك اختر اللعبة التي ترغب في شحنها الآن:**", parse_mode="Markdown", reply_markup=markup)
+
+    # اختيار باقة محددة والانتقال لطلب الـ ID
+    elif call.data.startswith("select_"):
+        pkg_id = call.data.replace("select_", "")
+        user_sessions[uid] = {'package_key': pkg_id}
+        
+        msg = bot.send_message(uid, "🆔 **من فضلك، قم بكتابة معرف اللاعب الخاص بك (Player ID) بدقة في اللعبة:**")
+        bot.register_next_step_handler(msg, process_player_id)
+
+    # لوحة تحكم الإدارة للأدمن (قبول / رفض الطلب عبر قاعدة البيانات)
+    elif call.data.startswith("adm_"):
+        parts = call.data.split("_")
+        action = parts
+        order_id = parts + "_" + parts
+        
+        # جلب بيانات الطلب من قاعدة البيانات لتفادي التكرار
+        conn = sqlite3.connect('orders.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, package_name, player_id, status FROM orders WHERE order_id = ?", (order_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            customer_id, package_name, player_id, current_status = row
+            
+            if current_status == 'PENDING':
+                if action == "approve":
+                    cursor.execute("UPDATE orders SET status = 'APPROVED' WHERE order_id = ?", (order_id,))
+                    conn.commit()
+                    
+                    success_txt = f"🎉 **تهانينا!** تم تأكيد عملية الدفع وشحن باقة **({package_name})** لحساب الـ ID الخاص بك: `{player_id}` بنجاح.\n\nشكراً لتعاملك معنا وتمنياتنا لك بلعب ممتع! 🎮✨"
+                    bot.send_message(customer_id, success_txt, parse_mode="Markdown")
+                    bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, 
+                                          text=f"🟢 **تم تسليم وشحن طلب اللاعب:** `{player_id}` بنجاح.")
+                elif action == "reject":
+                    cursor.execute("UPDATE orders SET status = 'REJECTED' WHERE order_id = ?", (order_id,))
+                    conn.commit()
+                    
+                    fail_txt = "❌ **نعتذر منك!** تم رفض طلب الشحن الخاص بك نظراً لعدم صحة بيانات التحويل أو لعدم وضوح الإيصال المرفق. يرجى مراجعة الدعم وإعادة المحاولة."
+                    bot.send_message(customer_id, fail_txt, parse_mode="Markdown")
+                    bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, 
+                                          text=f"🔴 **تم رفض طلب اللاعب:** `{player_id}`.")
+            else:
+                bot.answer_callback_query(call.id, "⚠️ تم اتخاذ إجراء سابق على هذا الطلب بالفعل!")
+        else:
+            bot.answer_callback_query(call.id, "⚠️ لم يتم العثور على هذا الطلب!")
+        conn.close()
+
+# الخطوة الثانية: استلام الـ ID وطلب الدفع عبر شام كاش ورفع الإيصال
+def process_player_id(message):
+    uid = message.chat.id
+    player_id = message.text
+    
+    if uid not in user_sessions or 'package_key' not in user_sessions[uid]:
+        bot.send_message(uid, "⚠️ عذراً، حدث خطأ في الجلسة. يرجى البدء من جديد عبر إرسال /start")
+        return
+        
+    user_sessions[uid]['player_id'] = player_id
+    pkg = PACKAGES[user_sessions[uid]['package_key']]
+    
+    payment_instruction = (
+        f"💳 **خطوة الدفع الفوري (شام كاش):**\n\n"
+        f"لإتمام شحن باقة **{pkg['name']}** للعبة **{pkg['game']}**:\n"
+        f"💵 يرجى تحويل مبلغ قيمته: **{pkg['price']}** إلى عنوان المحفظة التالي:\n\n"
+        f"`{SHAM_CASH_WALLET}`\n\n"
+        f"💡 *(ملاحظة: يمكنك الضغط على عنوان المحفظة أعلاه لنسخه تلقائياً بنقرة واحدة)*\n\n"
+        f"📸 بعد إتمام التحويل بنجاح، **قم بالتقاط لقطة شاشة لإيصال التحويل وإرسال الصورة هنا مباشرة** لتأكيد طلبك فورا:"
+    )
+    msg = bot.send_message(uid, payment_instruction, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_payment_photo)
+
+# الخطوة الأخيرة: استلام صورة الإيصال، حفظها في قاعدة البيانات وإرسالها للأدمن
+def process_payment_photo(message):
+    uid = message.chat.id
+    
+    # التأكد أن المستخدم أرسل صورة بالفعل
+    if message.content_type != 'photo':
+        msg = bot.send_message(uid, "⚠️ يرجى إرسال صورة إيصال الدفع (لقطة الشاشة) بشكل صحيح لتوثيق تحويلك:")
+        bot.register_next_step_handler(msg, process_payment_photo)
+        return
+
+    if uid not in user_sessions or 'package_key' not in user_sessions[uid] or 'player_id' not in user_sessions[uid]:
+        bot.send_message(uid, "⚠️ عذراً، انتهت الجلسة لطول الانتظار، يرجى إعادة البدء عبر /start")
+        return
+
+    pkg = PACKAGES[user_sessions[uid]['package_key']]
+    player_id = user_sessions[uid]['player_id']
+    photo_id = message.photo[-1].file_id # جلب أفضل جودة للصورة المرسلة
+    
+    order_id = f"{uid}_{message.message_id}"
+    
+    # حفظ الطلب بالإيصال والصورة داخل قاعدة البيانات SQLite بشكل دائم
+    conn = sqlite3.connect('orders.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO orders (order_id, user_id, package_name, player_id, photo_id) VALUES (?, ?, ?, ?, ?)",
+                   (order_id, uid, pkg['name'], player_id, photo_id))
+    conn.commit()
+    conn.close()
+    
+    # أزرار تحكم الأدمن
+    admin_markup = types.InlineKeyboardMarkup(row_width=2)
+    btn_approve = types.InlineKeyboardButton("✅ قبول وشحن", callback_data=f"adm_approve_{order_id}")
+    btn_reject = types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"adm_reject_{order_id}")
