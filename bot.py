@@ -121,11 +121,11 @@ def handle_callbacks(call):
         msg = bot.send_message(uid, "🆔 **من فضلك، قم بكتابة معرف اللاعب الخاص بك (Player ID) بدقة في اللعبة:**")
         bot.register_next_step_handler(msg, process_player_id)
 
-    # لوحة تحكم الإدارة للأدمن (قبول / رفض الطلب عبر قاعدة البيانات)
+    # لوحة تحكم الإدارة للأدمن (تم إصلاح الخطأ البرمجي هنا)
     elif call.data.startswith("adm_"):
         parts = call.data.split("_")
-        action = parts
-        order_id = parts + "_" + parts
+        action = parts[1]
+        order_id = parts[2] + "_" + parts[3]
         
         # جلب بيانات الطلب من قاعدة البيانات لتفادي التكرار
         conn = sqlite3.connect('orders.db')
@@ -213,4 +213,3 @@ def process_payment_photo(message):
     # أزرار تحكم الأدمن
     admin_markup = types.InlineKeyboardMarkup(row_width=2)
     btn_approve = types.InlineKeyboardButton("✅ قبول وشحن", callback_data=f"adm_approve_{order_id}")
-    btn_reject = types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"adm_reject_{order_id}")
