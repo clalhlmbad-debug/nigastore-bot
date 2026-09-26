@@ -25,7 +25,7 @@ def keep_alive():
 # ---------------- CONFIGURATION ----------------
 TOKEN = "8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8"
 ADMIN_ID = 8192730669  # ضع أيدي حسابك برقم فقط
-SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b99b06b5384"  # رقم شام كاش
+SHAM_CASH_ACCOUNT = "d1f48dff44e504323052c3b6533cd296"  # رقم شام كاش
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -120,13 +120,16 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
+    # طلب المبلغ ورقم العملية للشحن
     elif call.data == "charge_wallet":
         text = (
             f"💳 **طريقة الشحن عبر شام كاش:**\n\n"
             f"1️⃣ قم بتحويل المبلغ إلى رقم شام كاش:\n`{SHAM_CASH_ACCOUNT}`\n\n"
-            f"2️⃣ أرسل قيمة المبلغ المحول فقط في الرسالة التالية (أرقام فقط).\nمثال: `50000`"
+            f"2️⃣ بعد التحويل، أرسل **المبلغ ورقم العملية** بالترتيب التالي بفرع بينهما بمسافة أو فاصلة:\n"
+            f"مثال: `50000 1234567`\n"
+            f"(حيث 50000 هو المبلغ، و 1234567 هو رقم العملية)"
         )
-        user_states[user_id] = "WAITING_FOR_CHARGE"
+        user_states[user_id] = "WAITING_FOR_CHARGE_DETAILS"
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton("🔙 إلغاء", callback_data="main_menu")
@@ -139,16 +142,28 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
+    # قائمة باقات ببجي
     elif call.data == "cat_pubg":
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton(
-                "60 شدة - 15,000 ل.س", callback_data="buy_pubg_60_15000"
+                "60 شدة - 15,000 ل.س", callback_data="buy_PUBG_60UC_15000"
             )
         )
         markup.add(
             types.InlineKeyboardButton(
-                "325 شدة - 75,000 ل.س", callback_data="buy_pubg_325_75000"
+                "325 شدة - 75,000 ل.س", callback_data="buy_PUBG_325UC_75000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "660 شدة - 145,000 ل.س", callback_data="buy_PUBG_660UC_145000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "1800 شدة - 380,000 ل.س",
+                callback_data="buy_PUBG_1800UC_380000",
             )
         )
         markup.add(
@@ -162,16 +177,27 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
+    # قائمة باقات فري فاير
     elif call.data == "cat_ff":
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton(
-                "110 جوهرة - 12,000 ل.س", callback_data="buy_ff_110_12000"
+                "110 جوهرة - 12,000 ل.س", callback_data="buy_FF_110G_12000"
             )
         )
         markup.add(
             types.InlineKeyboardButton(
-                "530 جوهرة - 55,000 ل.س", callback_data="buy_ff_530_55000"
+                "530 جوهرة - 55,000 ل.س", callback_data="buy_FF_530G_55000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "1080 جوهرة - 105,000 ل.س", callback_data="buy_FF_1080G_105000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "2200 جوهرة - 210,000 ل.س", callback_data="buy_FF_2200G_210000"
             )
         )
         markup.add(
@@ -185,6 +211,7 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
+    # الشراء لجميع الباقات
     elif call.data.startswith("buy_"):
         _, game, item, price = call.data.split("_")
         price = int(price)
@@ -202,69 +229,90 @@ def callback_inline(call):
                 f"📥 لشراء **{item}** بسعر **{price} ل.س**:\nالرجاء إرسال **Player ID (أيدي اللاعب)** الآن.",
             )
 
-    # موافقة / رفض الأدمن
+    # موافقة / رفض الأدمن مع الشحن التلقائي
     elif call.data.startswith("adm_"):
         if call.from_user.id != ADMIN_ID:
             return
 
-        _, action, target_id, amount = call.data.split("_")
-        target_id, amount = int(target_id), int(amount)
+        parts = call.data.split("_")
+        action = parts[1]
+        target_id = int(parts[2])
+        amount = int(parts[3])
 
         if action == "app":
+            # إضافة الرصيد تلقائياً للزبون
             update_balance(target_id, amount)
+            new_bal = get_balance(target_id)
+
             bot.edit_message_text(
-                call.message.text + f"\n\n✅ **تمت الموافقة وإضافة {amount} ل.س.**",
+                call.message.text
+                + f"\n\n✅ **تم قبول الطلب وإضافة {amount} ل.س تلقائياً.**",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+            )
+
+            # إشعار الزبون بنجاح العملية
+            bot.send_message(
+                target_id,
+                f"🎉 **تمت الموافقة على طلب الشحن!**\n\nتم إضافة **{amount} ل.س** إلى محفظتك بنجاح.\nرصيدك الحالي: **{new_bal} ل.س**",
+                parse_mode="Markdown",
+            )
+
+        elif action == "rej":
+            bot.edit_message_text(
+                call.message.text + f"\n\n❌ **تم رفض طلب الشحن.**",
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
             )
             bot.send_message(
                 target_id,
-                f"🎉 تمت الموافقة على شحن حسابك بمبلغ {amount} ل.س بنجاح!",
-            )
-        elif action == "rej":
-            bot.edit_message_text(
-                call.message.text + f"\n\n❌ **تم رفض الطلب.**",
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-            )
-            bot.send_message(
-                target_id, f"❌ عذراً، تم رفض طلب الشحن بمبلغ {amount} ل.س."
+                f"❌ عذراً، تم رفض طلب الشحن الخاص بك بمبلغ {amount} ل.س.",
             )
 
 
-# 3. استقبال النصوص (طلب الشحن أو Player ID)
+# 3. استقبال النصوص (بيانات الشحن أو Player ID)
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id = message.chat.id
     state = user_states.get(user_id)
 
-    if state == "WAITING_FOR_CHARGE":
-        if message.text.isdigit():
-            amount = int(message.text)
+    # استقبال المبلغ ورقم العملية من الزبون
+    if state == "WAITING_FOR_CHARGE_DETAILS":
+        parts = message.text.strip().split()
+        if len(parts) >= 2 and parts[0].isdigit():
+            amount = int(parts[0])
+            tx_id = " ".join(parts[1:])
+
             markup = types.InlineKeyboardMarkup()
             markup.add(
                 types.InlineKeyboardButton(
-                    "✅ قبول", callback_data=f"adm_app_{user_id}_{amount}"
+                    "✅ قبول وإضافة الرصيد تلقائياً",
+                    callback_data=f"adm_app_{user_id}_{amount}",
                 ),
                 types.InlineKeyboardButton(
-                    "❌ رفض", callback_data=f"adm_rej_{user_id}_{amount}"
+                    "❌ رفض الطلب", callback_data=f"adm_rej_{user_id}_{amount}"
                 ),
             )
 
             bot.send_message(
                 ADMIN_ID,
-                f"📥 **طلب شحن جديد (شام كاش)!**\n\n👤 المستخدم: {message.from_user.first_name}\n🆔 ID: `{user_id}`\n💰 المبلغ: **{amount} ل.س**",
+                f"📥 **طلب شحن جديد (شام كاش)!**\n\n👤 الزبون: {message.from_user.first_name}\n🆔 ID الزبون: `{user_id}`\n💰 المبلغ المطلوبة إضافته: **{amount} ل.س**\n🧾 **رقم العملية:** `{tx_id}`\n\nتأكد من تطبيق شام كاش ثم اضغط زر القبول ليتم إضافة الرصيد تلقائياً للزبون.",
                 parse_mode="Markdown",
                 reply_markup=markup,
             )
             bot.reply_to(
                 message,
-                "⏳ تم إرسال طلب الشحن للإدارة، سيتم إضافة الرصيد فور التحقق.",
+                "⏳ تم إرسال الطلب ورقم العملية للإدارة، سيتم مراجعته وإضافة الرصيد لحسابك فور التأكد.",
             )
             user_states[user_id] = None
         else:
-            bot.reply_to(message, "❌ يرجى كتابة الأرقام فقط بدون حروف.")
+            bot.reply_to(
+                message,
+                "❌ صيغة غير صحيحة! يرجى إرسال المبلغ ثم رقم العملية وبينهما مسافة.\nمثال: `50000 1234567`",
+                parse_mode="Markdown",
+            )
 
+    # استقبال أيدي اللاعب للشراء
     elif state and state.startswith("BUY_"):
         _, game, item, price = state.split("_")
         price = int(price)
@@ -273,7 +321,7 @@ def handle_messages(message):
         # خصم الرصيد
         update_balance(user_id, -price)
 
-        # إرسال للآدمين
+        # إرسال للآدمن
         bot.send_message(
             ADMIN_ID,
             f"🛒 **طلب شراء لعبة جديد!**\n\n👤 الزبون: {message.from_user.first_name}\n🆔 ID الزبون: `{user_id}`\n📦 الطلب: **{game} - {item}**\n🎯 Player ID اللعبة: `{player_id}`",
@@ -282,7 +330,7 @@ def handle_messages(message):
 
         bot.reply_to(
             message,
-            f"✅ تم خصم {price} ل.س وإرسال طلبك للآدمين بنجاح!\nسيتم الشحن للأيدي: `{player_id}` أسرع وقت.",
+            f"✅ تم خصم {price} ل.س وإرسال طلبك للآدمن بنجاح!\nسيتم الشحن للأيدي: `{player_id}` في أسرع وقت.",
             parse_mode="Markdown",
         )
         user_states[user_id] = None
@@ -290,5 +338,5 @@ def handle_messages(message):
 
 # تشغيل السيرفر والبوت
 if __name__ == "__main__":
-    keep_alive()  # لضمان بقائه يعمل على Render
+    keep_alive()
     bot.infinity_polling()
