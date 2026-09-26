@@ -1,184 +1,294 @@
-import telebot
-from telebot import types
 import sqlite3
 from flask import Flask
 from threading import Thread
+import telebot
+from telebot import types
 
-# --- سيرفر وهمي للحفاظ على مجانية الـ Render ---
-app = Flask('')
+# --- سيرفر وهمي للحفاظ على مجانية Render ---
+app = Flask("")
 
-@app.route('/')
+
+@app.route("/")
 def home():
     return "Bot is Live!"
 
+
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host="0.0.0.0", port=8080)
+
 
 def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# --- إعدادات البوت الأساسية ---
-# ⚠️ ضع هنا التوكن الجديد الذي استخرجته بأمر /revoke من BotFather
-BOT_TOKEN = '8826744317:AAEY8S9xK4B4dXA3-kN2J6JyBF3ng701Ipg'
-ADMIN_ID = 8192730669
-SHAM_CASH_WALLET = "df910e178e027a6bfcae8b99b06b5384"
 
-bot = telebot.TeleBot(BOT_TOKEN)
-user_sessions = {}
+# ---------------- CONFIGURATION ----------------
+TOKEN = "8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8"
+ADMIN_ID = 8192730669  # ضع أيدي حسابك برقم فقط
+SHAM_CASH_ACCOUNT = "df910e178e027a6bfcae8b99b06b5384"  # رقم شام كاش
 
-# --- إنشاء قاعدة البيانات لحفظ الطلبات ---
-def init_db():
-    conn = sqlite3.connect('orders.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            order_id TEXT PRIMARY KEY,
-            user_id INTEGER,
-            package_name TEXT,
-            player_id TEXT,
-            photo_id TEXT,
-            status TEXT DEFAULT 'PENDING'
+bot = telebot.TeleBot(TOKEN)
+
+# ---------------- DATABASE SETUP ----------------
+conn = sqlite3.connect("store.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute(
+    """
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    balance INTEGER DEFAULT 0
+)
+"""
+)
+conn.commit()
+
+
+def get_balance(user_id):
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+    else:
+        cursor.execute(
+            "INSERT INTO users (user_id, balance) VALUES (?, ?)", (user_id, 0)
         )
-    ''')
-    conn.commit()
-    conn.close()
+        conn.commit()
+        return 0
 
-init_db()
 
-# قائمة الباقات والأسعار السورية
-PACKAGES = {
-    'pubg_b1': {'game': '🎮 ببجي موبايل', 'name': '60 شدة (UC)', 'price': '15,000 ل.س'},
-    'pubg_b2': {'game': '🎮 ببجي موبايل', 'name': '325 شدة (UC)', 'price': '65,000 ل.س'},
-    'pubg_b3': {'game': '🎮 ببجي موبايل', 'name': '660 شدة (UC)', 'price': '125,000 ل.س'},
-    'ff_f1': {'game': '💎 فري فاير', 'name': '100 جوهرة', 'price': '12,000 ل.س'},
-    'ff_f2': {'game': '💎 فري فاير', 'name': '210 جوهرة', 'price': '24,000 ل.س'},
-    'ff_f3': {'game': '💎 فري فاير', 'name': '530 جوهرة', 'price': '55,000 ل.س'}
-}
-
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    uid = message.chat.id
-    user_sessions[uid] = {}
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("🎮 شحن شدات ببجي (PUBG UC)", callback_data="show_pubg"),
-        types.InlineKeyboardButton("🔥 شحن جواهر فري فاير (Free Fire)", callback_data="show_freefire")
+def update_balance(user_id, amount):
+    get_balance(user_id)
+    cursor.execute(
+        "UPDATE users SET balance = balance + ? WHERE user_id = ?",
+        (amount, user_id),
     )
-    bot.send_message(uid, "⚡ **أهلاً بك في متجر شحن الألعاب المعتمد!** ⚡\n\n👇 اختر اللعبة التي ترغب في شحنها:", parse_mode="Markdown", reply_markup=markup)
+    conn.commit()
 
+
+# حالة المستخدمين لإدخال البيانات
+user_states = {}
+
+
+# 1. القائمة الرئيسية
+@bot.message_handler(commands=["start"])
+def send_welcome(message):
+    user_id = message.chat.id
+    balance = get_balance(user_id)
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn_pubg = types.InlineKeyboardButton(
+        "🎮 شحن ببجي (PUBG)", callback_data="cat_pubg"
+    )
+    btn_ff = types.InlineKeyboardButton(
+        "🔥 شحن فري فاير", callback_data="cat_ff"
+    )
+    btn_charge = types.InlineKeyboardButton(
+        "💳 شحن الرصيد (شام كاش)", callback_data="charge_wallet"
+    )
+    btn_account = types.InlineKeyboardButton(
+        "👤 حسابي", callback_data="my_account"
+    )
+
+    markup.add(btn_pubg, btn_ff)
+    markup.add(btn_charge, btn_account)
+
+    text = f"مرحباً بك في بوت الشحن! 🎮\n\nرصيدك الحالي: **{balance} ل.س**\nاختر من القائمة أدناه:"
+    bot.send_message(user_id, text, parse_mode="Markdown", reply_markup=markup)
+
+
+# 2. معالجة الأزرار
 @bot.callback_query_handler(func=lambda call: True)
-def handle_callbacks(call):
-    uid = call.message.chat.id
-    
-    if call.data == "show_pubg":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for key, pkg in PACKAGES.items():
-            if key.startswith('pubg_'):
-                markup.add(types.InlineKeyboardButton(f"📦 {pkg['name']} ← {pkg['price']}", callback_data=f"select_{key}"))
-        markup.add(types.InlineKeyboardButton("⬅️ العودة", callback_data="go_home"))
-        bot.edit_message_text(chat_id=uid, message_id=call.message.message_id, text="🛒 **باقات شدات ببجي:**", parse_mode="Markdown", reply_markup=markup)
-        
-    elif call.data == "show_freefire":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for key, pkg in PACKAGES.items():
-            if key.startswith('ff_'):
-                markup.add(types.InlineKeyboardButton(f"📦 {pkg['name']} ← {pkg['price']}", callback_data=f"select_{key}"))
-        markup.add(types.InlineKeyboardButton("⬅️ العودة", callback_data="go_home"))
-        bot.edit_message_text(chat_id=uid, message_id=call.message.message_id, text="🛒 **باقات جواهر فري فاير:**", parse_mode="Markdown", reply_markup=markup)
+def callback_inline(call):
+    user_id = call.message.chat.id
+    balance = get_balance(user_id)
 
-    elif call.data == "go_home":
-        markup = types.InlineKeyboardMarkup(row_width=1)
+    if call.data == "main_menu":
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        send_welcome(call.message)
+
+    elif call.data == "my_account":
+        text = f"👤 **تفاصيل حسابك:**\n\n🆔 ID: `{user_id}`\n💰 الرصيد الحالي: **{balance} ل.س**"
+        markup = types.InlineKeyboardMarkup()
         markup.add(
-            types.InlineKeyboardButton("🎮 شحن شدات ببجي (PUBG UC)", callback_data="show_pubg"),
-            types.InlineKeyboardButton("🔥 شحن جواهر فري فاير (Free Fire)", callback_data="show_freefire")
+            types.InlineKeyboardButton("🔙 العودة", callback_data="main_menu")
         )
-        bot.edit_message_text(chat_id=uid, message_id=call.message.message_id, text="⚡ **اختر اللعبة للبدء:**", parse_mode="Markdown", reply_markup=markup)
+        bot.edit_message_text(
+            text,
+            chat_id=user_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
 
-    elif call.data.startswith("select_"):
-        pkg_id = call.data.replace("select_", "")
-        user_sessions[uid] = {'package_key': pkg_id}
-        msg = bot.send_message(uid, "🆔 **اكتب معرف اللاعب الخاص بك (Player ID) في اللعبة:**")
-        bot.register_next_step_handler(msg, process_player_id)
+    elif call.data == "charge_wallet":
+        text = (
+            f"💳 **طريقة الشحن عبر شام كاش:**\n\n"
+            f"1️⃣ قم بتحويل المبلغ إلى رقم شام كاش:\n`{SHAM_CASH_ACCOUNT}`\n\n"
+            f"2️⃣ أرسل قيمة المبلغ المحول فقط في الرسالة التالية (أرقام فقط).\nمثال: `50000`"
+        )
+        user_states[user_id] = "WAITING_FOR_CHARGE"
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("🔙 إلغاء", callback_data="main_menu")
+        )
+        bot.edit_message_text(
+            text,
+            chat_id=user_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
 
-    elif call.data.startswith("approve_"):
-        order_id = call.data.replace("approve_", "")
-        conn = sqlite3.connect('orders.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, package_name, player_id, status FROM orders WHERE order_id = ?", (order_id,))
-        row = cursor.fetchone()
-        if row and row[3] == 'PENDING':
-            cursor.execute("UPDATE orders SET status = 'APPROVED' WHERE order_id = ?", (order_id,))
-            conn.commit()
-            bot.send_message(row[0], f"🎉 **تم شحن باقة ({row[1]}) لحساب الـ ID: `{row[2]}` بنجاح!**", parse_mode="Markdown")
-            bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, text=f"🟢 تم شحن طلب اللاعب `{row[2]}`")
-        conn.close()
+    elif call.data == "cat_pubg":
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton(
+                "60 شدة - 15,000 ل.س", callback_data="buy_pubg_60_15000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "325 شدة - 75,000 ل.س", callback_data="buy_pubg_325_75000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton("🔙 العودة", callback_data="main_menu")
+        )
+        bot.edit_message_text(
+            "🎮 **اختر باقة PUBG Mobile:**",
+            chat_id=user_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
 
-    elif call.data.startswith("reject_"):
-        order_id = call.data.replace("reject_", "")
-        conn = sqlite3.connect('orders.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, package_name, player_id, status FROM orders WHERE order_id = ?", (order_id,))
-        row = cursor.fetchone()
-        if row and row[3] == 'PENDING':
-            cursor.execute("UPDATE orders SET status = 'REJECTED' WHERE order_id = ?", (order_id,))
-            conn.commit()
-            bot.send_message(row[0], "❌ **نعتذر منك! تم رفض طلبك لعدم صحة التحويل أو الإيصال.**", parse_mode="Markdown")
-            bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, text=f"🔴 تم رفض طلب اللاعب `{row[2]}`")
-        conn.close()
+    elif call.data == "cat_ff":
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton(
+                "110 جوهرة - 12,000 ل.س", callback_data="buy_ff_110_12000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton(
+                "530 جوهرة - 55,000 ل.س", callback_data="buy_ff_530_55000"
+            )
+        )
+        markup.add(
+            types.InlineKeyboardButton("🔙 العودة", callback_data="main_menu")
+        )
+        bot.edit_message_text(
+            "🔥 **اختر باقة Free Fire:**",
+            chat_id=user_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
 
-def process_player_id(message):
-    uid = message.chat.id
-    if uid not in user_sessions or 'package_key' not in user_sessions[uid]:
-        bot.send_message(uid, "⚠️ حدث خطأ، أرسل /start")
-        return
-    user_sessions[uid]['player_id'] = message.text
-    pkg = PACKAGES[user_sessions[uid]['package_key']]
-    
-    payment_instruction = (
-        f"💳 **طريقة الدفع (شام كاش):**\n\n"
-        f"💵 يرجى تحويل: **{pkg['price']}** إلى المحفظة التالية:\n\n"
-        f"`{SHAM_CASH_WALLET}`\n\n"
-        f"📸 بعد التحويل، **أرسل لقطة شاشة لإيصال التحويل (صورة) هنا فوراً:**"
-    )
-    msg = bot.send_message(uid, payment_instruction, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_payment_photo)
+    elif call.data.startswith("buy_"):
+        _, game, item, price = call.data.split("_")
+        price = int(price)
 
-def process_payment_photo(message):
-    uid = message.chat.id
-    if message.content_type != 'photo':
-        msg = bot.send_message(uid, "⚠️ يرجى إرسال صورة الإيصال:")
-        bot.register_next_step_handler(msg, process_payment_photo)
-        return
+        if balance < price:
+            bot.answer_callback_query(
+                call.id,
+                "❌ رصيدك غير كافٍ! قم بشحن محفظتك أولاً.",
+                show_alert=True,
+            )
+        else:
+            user_states[user_id] = f"BUY_{game}_{item}_{price}"
+            bot.send_message(
+                user_id,
+                f"📥 لشراء **{item}** بسعر **{price} ل.س**:\nالرجاء إرسال **Player ID (أيدي اللاعب)** الآن.",
+            )
 
-    pkg = PACKAGES[user_sessions[uid]['package_key']]
-    player_id = user_sessions[uid]['player_id']
-    photo_id = message.photo[-1].file_id
-    order_id = f"{uid}_{message.message_id}"
-    
-    conn = sqlite3.connect('orders.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO orders (order_id, user_id, package_name, player_id, photo_id) VALUES (?, ?, ?, ?, ?)",
-                   (order_id, uid, pkg['name'], player_id, photo_id))
-    conn.commit()
-    conn.close()
-    
-    admin_markup = types.InlineKeyboardMarkup(row_width=2)
-    admin_markup.add(
-        types.InlineKeyboardButton("✅ قبول وشحن", callback_data=f"approve_{order_id}"),
-        types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"reject_{order_id}")
-    )
-    
-    admin_alert = (
-        f"🔔 **طلب شحن جديد!**\n\n"
-        f"🎮 **اللعبة:** {pkg['game']}\n"
-        f"📦 **الباقة:** {pkg['name']}\n"
-        f"🆔 **آيدي اللاعب:** `{player_id}`\n"
-        f"👤 **المشتري:** {message.from_user.first_name}"
-    )
-    bot.send_photo(ADMIN_ID, photo_id, caption=admin_alert, parse_mode="Markdown", reply_markup=admin_markup)
-    bot.send_message(uid, "⏳ **تم رفع طلبك بنجاح وجاري مراجعته من قِبل الإدارة!**")
+    # موافقة / رفض الأدمن
+    elif call.data.startswith("adm_"):
+        if call.from_user.id != ADMIN_ID:
+            return
 
-if __name__ == '__main__':
-    keep_alive()
-    bot.infinity_polling(skip_pending=True)
+        _, action, target_id, amount = call.data.split("_")
+        target_id, amount = int(target_id), int(amount)
+
+        if action == "app":
+            update_balance(target_id, amount)
+            bot.edit_message_text(
+                call.message.text + f"\n\n✅ **تمت الموافقة وإضافة {amount} ل.س.**",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+            )
+            bot.send_message(
+                target_id,
+                f"🎉 تمت الموافقة على شحن حسابك بمبلغ {amount} ل.س بنجاح!",
+            )
+        elif action == "rej":
+            bot.edit_message_text(
+                call.message.text + f"\n\n❌ **تم رفض الطلب.**",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+            )
+            bot.send_message(
+                target_id, f"❌ عذراً، تم رفض طلب الشحن بمبلغ {amount} ل.س."
+            )
+
+
+# 3. استقبال النصوص (طلب الشحن أو Player ID)
+@bot.message_handler(func=lambda message: True)
+def handle_messages(message):
+    user_id = message.chat.id
+    state = user_states.get(user_id)
+
+    if state == "WAITING_FOR_CHARGE":
+        if message.text.isdigit():
+            amount = int(message.text)
+            markup = types.InlineKeyboardMarkup()
+            markup.add(
+                types.InlineKeyboardButton(
+                    "✅ قبول", callback_data=f"adm_app_{user_id}_{amount}"
+                ),
+                types.InlineKeyboardButton(
+                    "❌ رفض", callback_data=f"adm_rej_{user_id}_{amount}"
+                ),
+            )
+
+            bot.send_message(
+                ADMIN_ID,
+                f"📥 **طلب شحن جديد (شام كاش)!**\n\n👤 المستخدم: {message.from_user.first_name}\n🆔 ID: `{user_id}`\n💰 المبلغ: **{amount} ل.س**",
+                parse_mode="Markdown",
+                reply_markup=markup,
+            )
+            bot.reply_to(
+                message,
+                "⏳ تم إرسال طلب الشحن للإدارة، سيتم إضافة الرصيد فور التحقق.",
+            )
+            user_states[user_id] = None
+        else:
+            bot.reply_to(message, "❌ يرجى كتابة الأرقام فقط بدون حروف.")
+
+    elif state and state.startswith("BUY_"):
+        _, game, item, price = state.split("_")
+        price = int(price)
+        player_id = message.text
+
+        # خصم الرصيد
+        update_balance(user_id, -price)
+
+        # إرسال للآدمين
+        bot.send_message(
+            ADMIN_ID,
+            f"🛒 **طلب شراء لعبة جديد!**\n\n👤 الزبون: {message.from_user.first_name}\n🆔 ID الزبون: `{user_id}`\n📦 الطلب: **{game} - {item}**\n🎯 Player ID اللعبة: `{player_id}`",
+            parse_mode="Markdown",
+        )
+
+        bot.reply_to(
+            message,
+            f"✅ تم خصم {price} ل.س وإرسال طلبك للآدمين بنجاح!\nسيتم الشحن للأيدي: `{player_id}` أسرع وقت.",
+            parse_mode="Markdown",
+        )
+        user_states[user_id] = None
+
+
+# تشغيل السيرفر والبوت
+if __name__ == "__main__":
+    keep_alive()  # لضمان بقائه يعمل على Render
+    bot.infinity_polling()
