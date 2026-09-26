@@ -1,27 +1,21 @@
-from datetime import datetime
 from flask import Flask
 import os
 import threading
+import sqlite3
 import telebot
 from telebot import types
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 # ================= الإعدادات =================
 
 TOKEN = os.getenv("BOT_TOKEN", "8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8192730669"))
-SHAM_CASH_ACCOUNT = os.getenv("SHAM_CASH", "d1f48dff44e504323052c3b6533cd296")
-DATABASE_URL = os.getenv("DATABASE_URL", "Postgresql://postgres:[Ahmad0998211716]@db.igbuukbgiepmmntazhlm.supabase.co:5432/postgres")
+SHAM_CASH_ACCOUNT = os.getenv("SHAM_CASH"," d1f48dff44e504323052c3b6533cd296")
 
 if not TOKEN:
-    raise RuntimeError("8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8")
+    raise RuntimeError("BOT_TOKEN غير موجود")
 
 if not ADMIN_ID:
-    raise RuntimeError("8192730669")
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL غير موجود")
+    raise RuntimeError("ADMIN_ID غير موجود")
 
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
@@ -44,10 +38,14 @@ def run_web():
 def keep_alive():
     threading.Thread(target=run_web, daemon=True).start()
 
-# ================= قاعدة البيانات =================
+# ================= قاعدة البيانات SQLite =================
+
+DB_FILE = "niga_store.db"
 
 def db():
-    return psycopg2.connect(DATABASE_URL)
+    conn = sqlite3.connect(DB_FILE, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     conn = db()
@@ -55,40 +53,39 @@ def init_db():
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            balance BIGINT NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            user_id INTEGER PRIMARY KEY,
+            balance INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS topups (
-            id BIGSERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             tx_id TEXT NOT NULL,
-            amount BIGINT,
+            amount INTEGER,
             status TEXT NOT NULL DEFAULT 'pending',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            reviewed_at TIMESTAMPTZ
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TEXT
         )
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS orders (
-            id BIGSERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             game TEXT NOT NULL,
             item TEXT NOT NULL,
-            price BIGINT NOT NULL,
+            price INTEGER NOT NULL,
             player_id TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            reviewed_at TIMESTAMPTZ
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TEXT
         )
     """)
 
     conn.commit()
-    cur.close()
     conn.close()
 
 init_db()
@@ -100,13 +97,11 @@ def ensure_user(user_id):
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT INTO users(user_id)
-        VALUES(%s)
-        ON CONFLICT(user_id) DO NOTHING
+        INSERT OR IGNORE INTO users(user_id)
+        VALUES(?)
     """, (user_id,))
 
     conn.commit()
-    cur.close()
     conn.close()
 
 
@@ -117,13 +112,13 @@ def get_balance(user_id):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT balance FROM users WHERE user_id=%s",
+        "SELECT balance FROM users WHERE user_id=?",
         (user_id,)
     )
 
-    balance = cur.fetchone()[0]
+    row = cur.fetchone()
+    balance = row["balance"] if row else 0
 
-    cur.close()
     conn.close()
 
     return balance
@@ -137,12 +132,11 @@ def add_balance(user_id, amount):
 
     cur.execute("""
         UPDATE users
-        SET balance = balance + %s
-        WHERE user_id = %s
+        SET balance = balance + ?
+        WHERE user_id = ?
     """, (amount, user_id))
 
     conn.commit()
-    cur.close()
     conn.close()
 
 
@@ -152,22 +146,18 @@ def deduct_balance(user_id, amount):
 
     cur.execute("""
         UPDATE users
-        SET balance = balance - %s
-        WHERE user_id = %s
-        AND balance >= %s
-        RETURNING balance
+        SET balance = balance - ?
+        WHERE user_id = ?
+        AND balance >= ?
     """, (amount, user_id, amount))
 
-    row = cur.fetchone()
+    result = cur.rowcount == 1
 
-    if row:
+    if result:
         conn.commit()
-        result = True
     else:
         conn.rollback()
-        result = False
 
-    cur.close()
     conn.close()
 
     return result
@@ -176,20 +166,19 @@ def deduct_balance(user_id, amount):
 # ================= الباقات =================
 
 PUBG = [
-    ("60 UC", 13500),
-    ("325 UC", 68000),
-    ("660 UC", 135000),
-    ("1800 UC", 350000),
+    ("60 UC", 130),
+    ("325 UC", 680),
+    ("660 UC", 1350),
+    ("1800 UC", 3500),
 ]
 
 FREE_FIRE = [
-    ("110 Diamonds", 11000),
-    ("530 Diamonds", 50000),
-    ("1080 Diamonds", 98000),
-    ("2200 Diamonds", 195000),
+    ("110 Diamonds", 110),
+    ("530 Diamonds", 500),
+    ("1080 Diamonds", 980),
+    ("2200 Diamonds", 1950),
 ]
 
-# حالات المستخدم المؤقتة
 states = {}
 
 
@@ -263,7 +252,7 @@ def callbacks(call):
 
     try:
 
-        # العودة للقائمة
+        # القائمة
         if data == "main":
 
             states.pop(user_id, None)
@@ -302,6 +291,76 @@ def callbacks(call):
                 "👤 <b>حسابك</b>\n\n"
                 f"🆔 ID: <code>{user_id}</code>\n"
                 f"💰 الرصيد: <b>{balance:,} ل.س</b>"
+            )
+
+            bot.edit_message_text(
+                text,
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                reply_markup=keyboard
+            )
+
+        # سجل الطلبات
+        elif data == "history":
+
+            conn = db()
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT id, game, item, price, player_id, status
+                FROM orders
+                WHERE user_id=?
+                ORDER BY id DESC
+                LIMIT 10
+            """, (user_id,))
+
+            rows = cur.fetchall()
+
+            conn.close()
+
+            if not rows:
+
+                text = (
+                    "📜 <b>سجل الطلبات</b>\n\n"
+                    "لا يوجد لديك طلبات حتى الآن."
+                )
+
+            else:
+
+                status_names = {
+                    "pending": "⏳ بانتظار التأكيد",
+                    "paid_pending": "🔄 قيد التنفيذ",
+                    "completed": "✅ مكتمل",
+                    "refunded": "↩️ مسترجع"
+                }
+
+                lines = ["📜 <b>آخر الطلبات</b>\n"]
+
+                for row in rows:
+
+                    status = status_names.get(
+                        row["status"],
+                        row["status"]
+                    )
+
+                    lines.append(
+                        f"🔢 #{row['id']}\n"
+                        f"🎮 {row['game']}\n"
+                        f"📦 {row['item']}\n"
+                        f"💰 {row['price']:,} ل.س\n"
+                        f"👤 <code>{row['player_id']}</code>\n"
+                        f"{status}\n"
+                    )
+
+                text = "\n".join(lines)
+
+            keyboard = types.InlineKeyboardMarkup()
+
+            keyboard.add(
+                types.InlineKeyboardButton(
+                    "🔙 القائمة",
+                    callback_data="main"
+                )
             )
 
             bot.edit_message_text(
@@ -361,7 +420,7 @@ def callbacks(call):
                 reply_markup=keyboard
             )
 
-        # شراء باقة
+        # شراء
         elif data.startswith("buy:"):
 
             _, game, index = data.split(":")
@@ -407,14 +466,13 @@ def callbacks(call):
             cur.execute("""
                 SELECT user_id, game, item, price, player_id
                 FROM orders
-                WHERE id=%s
-                AND user_id=%s
+                WHERE id=?
+                AND user_id=?
                 AND status='pending'
             """, (order_id, user_id))
 
             order = cur.fetchone()
 
-            cur.close()
             conn.close()
 
             if not order:
@@ -427,7 +485,7 @@ def callbacks(call):
 
                 return
 
-            price = order[3]
+            price = order["price"]
 
             if not deduct_balance(user_id, price):
 
@@ -445,12 +503,10 @@ def callbacks(call):
             cur.execute("""
                 UPDATE orders
                 SET status='paid_pending'
-                WHERE id=%s
+                WHERE id=?
             """, (order_id,))
 
             conn.commit()
-
-            cur.close()
             conn.close()
 
             keyboard = types.InlineKeyboardMarkup(row_width=2)
@@ -471,10 +527,10 @@ def callbacks(call):
                 "🛒 <b>طلب شحن جديد</b>\n\n"
                 f"🔢 الطلب: <b>#{order_id}</b>\n"
                 f"👤 العميل: <code>{user_id}</code>\n"
-                f"🎮 اللعبة: {order[1]}\n"
-                f"📦 الباقة: {order[2]}\n"
+                f"🎮 اللعبة: {order['game']}\n"
+                f"📦 الباقة: {order['item']}\n"
                 f"💰 السعر: {price:,} ل.س\n"
-                f"👤 Player ID: <code>{order[4]}</code>",
+                f"👤 Player ID: <code>{order['player_id']}</code>",
                 reply_markup=keyboard
             )
 
@@ -495,14 +551,12 @@ def callbacks(call):
 
             cur.execute("""
                 DELETE FROM orders
-                WHERE id=%s
-                AND user_id=%s
+                WHERE id=?
+                AND user_id=?
                 AND status='pending'
             """, (order_id, user_id))
 
             conn.commit()
-
-            cur.close()
             conn.close()
 
             bot.edit_message_text(
@@ -511,8 +565,7 @@ def callbacks(call):
                 message_id=call.message.message_id
             )
 
-        # ================= الأدمن =================
-
+        # تم الشحن
         elif data.startswith("done:"):
 
             if user_id != ADMIN_ID:
@@ -526,45 +579,43 @@ def callbacks(call):
             cur.execute("""
                 SELECT user_id, item, player_id
                 FROM orders
-                WHERE id=%s
+                WHERE id=?
                 AND status='paid_pending'
             """, (order_id,))
 
             order = cur.fetchone()
 
             if not order:
-                conn.rollback()
-                cur.close()
+
                 conn.close()
                 return
 
             cur.execute("""
                 UPDATE orders
                 SET status='completed',
-                    reviewed_at=NOW()
-                WHERE id=%s
+                    reviewed_at=CURRENT_TIMESTAMP
+                WHERE id=?
             """, (order_id,))
 
             conn.commit()
-
-            cur.close()
             conn.close()
 
             bot.send_message(
-                order[0],
+                order["user_id"],
                 "🎉 <b>تم تنفيذ طلبك بنجاح!</b>\n\n"
-                f"📦 {order[1]}\n"
-                f"👤 Player ID: <code>{order[2]}</code>\n"
+                f"📦 {order['item']}\n"
+                f"👤 Player ID: <code>{order['player_id']}</code>\n"
                 f"🔢 الطلب: #{order_id}"
             )
 
             bot.edit_message_text(
-                call.message.text + "\n\n✅ <b>تم تسجيل الشحن.</b>",
+                call.message.text +
+                "\n\n✅ <b>تم تسجيل الشحن.</b>",
                 chat_id=ADMIN_ID,
                 message_id=call.message.message_id
             )
 
-        # إرجاع مبلغ الطلب
+        # إرجاع المبلغ
         elif data.startswith("refund:"):
 
             if user_id != ADMIN_ID:
@@ -578,44 +629,147 @@ def callbacks(call):
             cur.execute("""
                 SELECT user_id, price
                 FROM orders
-                WHERE id=%s
+                WHERE id=?
                 AND status='paid_pending'
             """, (order_id,))
 
             order = cur.fetchone()
 
             if not order:
-                conn.rollback()
-                cur.close()
+
                 conn.close()
                 return
 
             cur.execute("""
                 UPDATE users
-                SET balance=balance+%s
-                WHERE user_id=%s
-            """, (order[1], order[0]))
+                SET balance=balance+?
+                WHERE user_id=?
+            """, (order["price"], order["user_id"]))
 
             cur.execute("""
                 UPDATE orders
                 SET status='refunded',
-                    reviewed_at=NOW()
-                WHERE id=%s
+                    reviewed_at=CURRENT_TIMESTAMP
+                WHERE id=?
             """, (order_id,))
 
             conn.commit()
-
-            cur.close()
             conn.close()
 
             bot.send_message(
-                order[0],
-                f"↩️ تم إرجاع <b>{order[1]:,} ل.س</b> إلى رصيدك.\n"
+                order["user_id"],
+                f"↩️ تم إرجاع "
+                f"<b>{order['price']:,} ل.س</b> "
+                f"إلى رصيدك.\n"
                 f"الطلب #{order_id}"
             )
 
             bot.edit_message_text(
-                call.message.text + "\n\n↩️ <b>تم إرجاع المبلغ.</b>",
+                call.message.text +
+                "\n\n↩️ <b>تم إرجاع المبلغ.</b>",
+                chat_id=ADMIN_ID,
+                message_id=call.message.message_id
+            )
+
+        # قبول شحن الرصيد
+        elif data.startswith("topup_ok:"):
+
+            if user_id != ADMIN_ID:
+                return
+
+            topup_id = int(data.split(":")[1])
+
+            conn = db()
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT user_id, amount
+                FROM topups
+                WHERE id=?
+                AND status='pending'
+            """, (topup_id,))
+
+            topup = cur.fetchone()
+
+            if not topup:
+
+                conn.close()
+                return
+
+            cur.execute("""
+                UPDATE users
+                SET balance=balance+?
+                WHERE user_id=?
+            """, (topup["amount"], topup["user_id"]))
+
+            cur.execute("""
+                UPDATE topups
+                SET status='approved',
+                    reviewed_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (topup_id,))
+
+            conn.commit()
+            conn.close()
+
+            bot.send_message(
+                topup["user_id"],
+                f"✅ تم قبول شحن الرصيد.\n\n"
+                f"💰 تمت إضافة "
+                f"<b>{topup['amount']:,} ل.س</b> "
+                f"إلى رصيدك."
+            )
+
+            bot.edit_message_text(
+                call.message.text +
+                "\n\n✅ <b>تم قبول الشحن.</b>",
+                chat_id=ADMIN_ID,
+                message_id=call.message.message_id
+            )
+
+        # رفض شحن الرصيد
+        elif data.startswith("topup_no:"):
+
+            if user_id != ADMIN_ID:
+                return
+
+            topup_id = int(data.split(":")[1])
+
+            conn = db()
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT user_id
+                FROM topups
+                WHERE id=?
+                AND status='pending'
+            """, (topup_id,))
+
+            topup = cur.fetchone()
+
+            if not topup:
+
+                conn.close()
+                return
+
+            cur.execute("""
+                UPDATE topups
+                SET status='rejected',
+                    reviewed_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (topup_id,))
+
+            conn.commit()
+            conn.close()
+
+            bot.send_message(
+                topup["user_id"],
+                "❌ تم رفض طلب شحن الرصيد."
+            )
+
+            bot.edit_message_text(
+                call.message.text +
+                "\n\n❌ <b>تم رفض الشحن.</b>",
                 chat_id=ADMIN_ID,
                 message_id=call.message.message_id
             )
@@ -682,6 +836,8 @@ def messages(message):
 
     if not state:
 
+        ensure_user(user_id)
+
         show_main(user_id)
 
         return
@@ -717,129 +873,18 @@ def messages(message):
 
         amount = int(text)
 
+        if amount <= 0:
+
+            bot.send_message(
+                user_id,
+                "❌ المبلغ يجب أن يكون أكبر من صفر."
+            )
+
+            return
+
         conn = db()
         cur = conn.cursor()
 
         cur.execute("""
             INSERT INTO topups(user_id, tx_id, amount)
-            VALUES(%s,%s,%s)
-            RETURNING id
-        """, (
-            user_id,
-            state["tx_id"],
-            amount
-        ))
-
-        topup_id = cur.fetchone()[0]
-
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        states.pop(user_id, None)
-
-        keyboard = types.InlineKeyboardMarkup(row_width=2)
-
-        keyboard.add(
-            types.InlineKeyboardButton(
-                "✅ قبول",
-                callback_data=f"topup_ok:{topup_id}"
-            ),
-            types.InlineKeyboardButton(
-                "❌ رفض",
-                callback_data=f"topup_no:{topup_id}"
-            )
-        )
-
-        bot.send_message(
-            ADMIN_ID,
-            "💳 <b>طلب شحن رصيد</b>\n\n"
-            f"🔢 الطلب: #{topup_id}\n"
-            f"👤 المستخدم: <code>{user_id}</code>\n"
-            f"🧾 رقم العملية: <code>{state['tx_id']}</code>\n"
-            f"💰 المبلغ: <b>{amount:,} ل.س</b>\n\n"
-            "تحقق من شام كاش قبل الموافقة.",
-            reply_markup=keyboard
-        )
-
-        bot.send_message(
-            user_id,
-            "⏳ تم إرسال طلب شحن الرصيد للإدارة."
-        )
-
-        return
-
-    # Player ID
-    if state["type"] == "player_id":
-
-        player_id = text
-
-        conn = db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO orders(
-                user_id,
-                game,
-                item,
-                price,
-                player_id
-            )
-            VALUES(%s,%s,%s,%s,%s)
-            RETURNING id
-        """, (
-            user_id,
-            state["game"],
-            state["item"],
-            state["price"],
-            player_id
-        ))
-
-        order_id = cur.fetchone()[0]
-
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        states.pop(user_id, None)
-
-        keyboard = types.InlineKeyboardMarkup(row_width=2)
-
-        keyboard.add(
-            types.InlineKeyboardButton(
-                "✅ تأكيد",
-                callback_data=f"confirm:{order_id}"
-            ),
-            types.InlineKeyboardButton(
-                "❌ إلغاء",
-                callback_data=f"cancel:{order_id}"
-            )
-        )
-
-        bot.send_message(
-            user_id,
-            "🛒 <b>تأكيد الطلب</b>\n\n"
-            f"🎮 اللعبة: {state['game']}\n"
-            f"📦 الباقة: {state['item']}\n"
-            f"💰 السعر: {state['price']:,} ل.س\n"
-            f"👤 Player ID: <code>{player_id}</code>\n\n"
-            "هل تريد تأكيد الطلب؟",
-            reply_markup=keyboard
-        )
-
-
-# ================= التشغيل =================
-
-if __name__ == "__main__":
-
-    keep_alive()
-
-    print("NigaStore Bot Started")
-
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=30,
-        long_polling_timeout=30
-    )
+            VALUES(?,?,?)
