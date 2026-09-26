@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 from flask import Flask
 from threading import Thread
 import telebot
@@ -10,7 +11,7 @@ app = Flask("")
 
 @app.route("/")
 def home():
-    return "Bot is Live!"
+    return "Bot is Live & Database Saved!"
 
 
 def run():
@@ -24,7 +25,7 @@ def keep_alive():
 
 # ---------------- CONFIGURATION ----------------
 TOKEN = "8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8"
-ADMIN_ID = 8192730669 # ضع أيدي حسابك برقم فقط
+ADMIN_ID = 8192730669  # ضع أيدي حسابك برقم فقط
 SHAM_CASH_ACCOUNT = "d1f48dff44e504323052c3b6533cd296"  # رقم شام كاش
 
 bot = telebot.TeleBot(TOKEN)
@@ -32,11 +33,28 @@ bot = telebot.TeleBot(TOKEN)
 # ---------------- DATABASE SETUP ----------------
 conn = sqlite3.connect("store.db", check_same_thread=False)
 cursor = conn.cursor()
+
+# 1. جدول المستخدمين والرصيد
 cursor.execute(
     """
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     balance INTEGER DEFAULT 0
+)
+"""
+)
+
+# 2. جدول سجل الطلبات والمبيعات (السجل الدائم)
+cursor.execute(
+    """
+CREATE TABLE IF NOT EXISTS history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    game TEXT,
+    item TEXT,
+    price INTEGER,
+    player_id TEXT,
+    date TEXT
 )
 """
 )
@@ -65,7 +83,26 @@ def update_balance(user_id, amount):
     conn.commit()
 
 
-# حالة المستخدمين وتخزين طلباتهم المؤقتة
+# إضافة الطلب لسجل المستخدم
+def add_to_history(user_id, game, item, price, player_id):
+    date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    cursor.execute(
+        "INSERT INTO history (user_id, game, item, price, player_id, date) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, game, item, price, player_id, date_str),
+    )
+    conn.commit()
+
+
+# جلب سجل عمليات المستخدم
+def get_user_history(user_id):
+    cursor.execute(
+        "SELECT game, item, price, player_id, date FROM history WHERE user_id = ? ORDER BY id DESC LIMIT 10",
+        (user_id,),
+    )
+    return cursor.fetchall()
+
+
+# حالة المستخدمين والطلبات
 user_states = {}
 pending_orders = {}
 
@@ -87,7 +124,7 @@ def send_welcome(message):
         "💳 شحن الرصيد (شام كاش)", callback_data="charge_wallet"
     )
     btn_account = types.InlineKeyboardButton(
-        "👤 حسابي", callback_data="my_account"
+        "👤 حسابي / السجل", callback_data="my_account"
     )
 
     markup.add(btn_pubg, btn_ff)
@@ -107,11 +144,41 @@ def callback_inline(call):
         bot.delete_message(call.message.chat.id, call.message.message_id)
         send_welcome(call.message)
 
+    # صفحة الحساب وسجل الطلبات
     elif call.data == "my_account":
         text = f"👤 **تفاصيل حسابك:**\n\n🆔 ID: `{user_id}`\n💰 الرصيد الحالي: **{balance:,} ل.س**"
         markup = types.InlineKeyboardMarkup()
         markup.add(
+            types.InlineKeyboardButton(
+                "📜 سجل طلباتي السابق", callback_data="view_history"
+            )
+        )
+        markup.add(
             types.InlineKeyboardButton("🔙 العودة", callback_data="main_menu")
+        )
+        bot.edit_message_text(
+            text,
+            chat_id=user_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
+
+    # عرض سجل العمليات للزبون
+    elif call.data == "view_history":
+        history_data = get_user_history(user_id)
+        if not history_data:
+            text = "📜 **سجل الطلبات:**\n\nلا توجد عمليات شراء سابقة لديك حتى الآن."
+        else:
+            text = "📜 **سجل آخر طلباتك:**\n\n"
+            for item_game, item_name, price, pid, dt in history_data:
+                text += f"▪️ **{item_name}** ({item_game})\n   💰 السعر: {price:,} ل.س\n   👤 الأيدي: `{pid}`\n   📅 التاريخ: {dt}\n-------------------\n"
+
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton(
+                "🔙 العودة لحسابي", callback_data="my_account"
+            )
         )
         bot.edit_message_text(
             text,
@@ -141,7 +208,7 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
-    # قائمة باقات ببجي
+    # قائمة ببجي
     elif call.data == "cat_pubg":
         markup = types.InlineKeyboardMarkup()
         markup.add(
@@ -175,7 +242,7 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
-    # قائمة باقات فري فاير
+    # قائمة فري فاير
     elif call.data == "cat_ff":
         markup = types.InlineKeyboardMarkup()
         markup.add(
@@ -209,7 +276,7 @@ def callback_inline(call):
             reply_markup=markup,
         )
 
-    # اختيار الباقة وطلب الأيدي
+    # إدخال الأيدي
     elif call.data.startswith("buy_"):
         _, game, item, price = call.data.split("_")
         price = int(price)
@@ -229,7 +296,7 @@ def callback_inline(call):
             )
             bot.send_message(user_id, text, parse_mode="Markdown")
 
-    # تأكيد عملية الشراء الإجبارية
+    # تأكيد الشراء وحفظه في السجل
     elif call.data == "confirm_buy":
         if user_id in pending_orders:
             order = pending_orders[user_id]
@@ -241,13 +308,22 @@ def callback_inline(call):
                 )
                 return
 
-            # خصم الرصيد عند التأكيد فقط
+            # خصم الرصيد
             update_balance(user_id, -price)
 
-            # إرسال طلب الشراء للآدمن
+            # إضافة الطلب في السجل الدائم
+            add_to_history(
+                user_id,
+                order["game"],
+                order["item"],
+                price,
+                order["player_id"],
+            )
+
+            # إرسال إشعار للآدمن
             bot.send_message(
                 ADMIN_ID,
-                f"🛒 **طلب شراء جديد!**\n\n"
+                f"🛒 **طلب شراء جديد (تم توثيقه بالسجل)!**\n\n"
                 f"👤 الزبون: {call.from_user.first_name}\n"
                 f"🆔 ID الزبون: `{user_id}`\n"
                 f"📦 الفئة: **{order['item']}**\n"
@@ -258,14 +334,15 @@ def callback_inline(call):
 
             bot.edit_message_text(
                 f"✅ **تم تأكيد الشراء بنجاح!**\n\n"
-                f"تم خصم {price:,} ل.س وجاري شحن الأيدي: `{order['player_id']}`",
+                f"تم خصم {price:,} ل.س وإضافة العملية إلى سجل حسابك.\n"
+                f"جاري شحن الأيدي: `{order['player_id']}`",
                 chat_id=user_id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
             )
             del pending_orders[user_id]
 
-    # إلغاء عملية الشراء
+    # إلغاء الشراء
     elif call.data == "cancel_buy":
         if user_id in pending_orders:
             del pending_orders[user_id]
@@ -276,7 +353,7 @@ def callback_inline(call):
             parse_mode="Markdown",
         )
 
-    # أزرار موافقة / رفض الآدمن للشحن
+    # أزرار موافقة / رفض الشحن
     elif call.data.startswith("adm_"):
         if call.from_user.id != ADMIN_ID:
             return
@@ -310,13 +387,13 @@ def callback_inline(call):
             )
 
 
-# 3. استقبال النصوص (رقم العملية / المبلغ / Player ID)
+# 3. استقبال النصوص
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     user_id = message.chat.id
     state = user_states.get(user_id)
 
-    # استقبال رقم العملية للشحن
+    # استقبال رقم العملية
     if state == "WAITING_FOR_TX_ONLY":
         tx_id = message.text.strip()
 
@@ -342,7 +419,7 @@ def handle_messages(message):
         )
         user_states[user_id] = None
 
-    # استقبال مبلغ الشحن من الآدمن
+    # استقبال المبلغ من الآدمن
     elif state and state.startswith("SET_AMOUNT_") and user_id == ADMIN_ID:
         target_id = int(state.split("_")[2])
         if message.text.isdigit():
@@ -364,13 +441,12 @@ def handle_messages(message):
         else:
             bot.reply_to(message, "❌ يرجى كتابة المبلغ بالأرقام فقط.")
 
-    # استقبال Player ID وعرض شاشة تأكيد الشراء
+    # استقبال أيدي اللاعب
     elif state and state.startswith("BUY_"):
         _, game, item, price = state.split("_")
         price = int(price)
         player_id = message.text.strip()
 
-        # حفظ بيانات الطلب المؤقتة
         pending_orders[user_id] = {
             "game": game,
             "item": item,
@@ -378,7 +454,6 @@ def handle_messages(message):
             "player_id": player_id,
         }
 
-        # بناء رسالة تأكيد الشراء بنفس التنسيق المطلوب
         text = (
             f"🛒 **تأكيد عملية الشراء:**\n\n"
             f"📦 **الفئة:** {item}\n"
