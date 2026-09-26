@@ -25,11 +25,10 @@ def keep_alive():
 
 
 # ---------------- CONFIGURATION ----------------
-TOKEN = os.environ.get("8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8")
+TOKEN = os.environ.get("BOT_TOKEN", "8826744317:AAEzlogirGNPyzg1vBRY538waG4XOINpJp8")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "8192730669"))
 SHAM_CASH_ACCOUNT = os.environ.get("SHAM_CASH", "d1f48dff44e504323052c3b6533cd296")
-DATABASE_URL = os.environ.get("DATABASE_URL = "postgresql://user:password@ep-xyz.postgres.database.azure.com/dbname"
-")
+DATABASE_URL = os.environ.get("DATABASE_URL", "Postgresql://postgres:[Ahmad0998211716]@db.igbuukbgiepmmntazhlm.supabase.co:5432/postgres")
 
 bot = telebot.TeleBot(TOKEN)
 
